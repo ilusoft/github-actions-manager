@@ -17,8 +17,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      VITE_BASE_PATH: "/${{ github.event.repository.name }}"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,6 +31,8 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          VITE_BASE_PATH: ./
         run: npm run build
 
       - name: Upload artifact
