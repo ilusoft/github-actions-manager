@@ -19,6 +19,30 @@ React + Vite application for exploring GitHub Actions workflows across repositor
 
 The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/index.css` (Tailwind entry point).
 
+## Using the Application
+
+1. **Authenticate with GitHub**
+   - Open the _Access Token_ dialog from the header to provide a personal access token (PAT).
+   - Only the presence of a token is stored in React state; the raw token persists in `localStorage` and is never shown in the UI.
+   - Clearing the token invalidates cached GitHub queries so the UI stays consistent across tabs.
+
+2. **Choose monitoring scope**
+   - The _Organization & Repository Selector_ loads organizations tied to the PAT and lists repositories for the selected organization.
+   - Repositories persist in `localStorage`, and you can enable/disable entries, filter by name, reorder the list, or reset the scope entirely.
+
+3. **Explore workflow health**
+   - The _Repository Workflow Dashboard_ fetches workflows for each monitored repository and summarizes their most recent runs.
+   - Filter runs by branch, date range, or run title, and hide workflows without recent activity to focus on active pipelines.
+   - Open the _Workflow Details_ dialog for per-run metadata, timestamps, and quick links back to GitHub.
+
+4. **Run bulk automation**
+   - **Bulk Branch Dialog**: create a new branch across all selected repositories from a shared base ref.
+   - **Bulk PR Dialog**: open matching pull requests across repositories with a shared title, description, and source/target branches.
+   - **Bulk Workflow Run Dialog**: dispatch workflow runs in parallel, including optional input payloads and pattern-based workflow selection.
+   - Each action surfaces repository-level progress, success/error statuses, and direct links to resulting GitHub resources.
+
+> **Maintenance reminder:** Update this usage section whenever features are added, modified, or removed.
+
 ## Project Structure
 
 - **`src/components/ui/`**: shadcn/ui components (e.g., `button.tsx`). Always generate via CLI.
