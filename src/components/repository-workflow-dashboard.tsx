@@ -33,6 +33,7 @@ import {
   WorkflowDetailsDialog,
   filterWorkflowByRunName,
 } from "@/components/workflow-details-dialog";
+import { RepositoryDeploymentGrid } from "@/components/repository-deployment-grid";
 
 const STATUS_CLASSES: Record<WorkflowStatus, string> = {
   never_run: "bg-muted text-muted-foreground",
@@ -87,6 +88,9 @@ export function RepositoryWorkflowDashboard({
   onReorder,
 }: RepositoryWorkflowDashboardProps) {
   const [order, setOrder] = useState(repositories);
+  const [viewMode, setViewMode] = useState<"workflows" | "deployments">(
+    "workflows"
+  );
   const [dragging, setDragging] = useState<string | null>(null);
   const draggingRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
@@ -352,6 +356,30 @@ export function RepositoryWorkflowDashboard({
     }
   }, [onReorder, order, repositories]);
 
+  const handleRepositorySelectionChange = useCallback(
+    (repository: string, checked: boolean) => {
+      setSelectedRepositories((previous) => {
+        const next = new Set(previous);
+        if (checked) {
+          next.add(repository);
+        } else {
+          next.delete(repository);
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const headerTitle =
+    viewMode === "workflows" ? "Repository workflows" : "Deployment overview";
+  const headerDescription =
+    viewMode === "workflows"
+      ? "Review workflow health across the selected repositories."
+      : "Compare latest deployments per environment across the selected repositories.";
+
+  const showFilters = viewMode === "workflows";
+
   if (!organization || enabledRepositories.length === 0) {
     return null;
   }
@@ -390,12 +418,28 @@ export function RepositoryWorkflowDashboard({
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold">Repository workflows</h3>
-            <p className="text-sm text-muted-foreground">
-              Review workflow health across the selected repositories.
-            </p>
+            <h3 className="text-lg font-semibold">{headerTitle}</h3>
+            <p className="text-sm text-muted-foreground">{headerDescription}</p>
           </div>
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={viewMode === "workflows" ? "default" : "ghost"}
+                onClick={() => setViewMode("workflows")}
+              >
+                Workflows
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={viewMode === "deployments" ? "default" : "ghost"}
+                onClick={() => setViewMode("deployments")}
+              >
+                Deployments
+              </Button>
+            </div>
             <span className="text-xs text-muted-foreground">
               Last refreshed: {lastRefreshedLabel}
             </span>
@@ -419,6 +463,17 @@ export function RepositoryWorkflowDashboard({
                       "workflows",
                     ],
                   });
+                  queryClient.invalidateQueries({
+                    queryKey: [
+                      "github",
+                      "org",
+                      organization,
+                      "repo",
+                      repo,
+                      "deployments",
+                      "environments",
+                    ],
+                  });
                 });
 
                 setLastRefreshedAt(new Date());
@@ -429,144 +484,159 @@ export function RepositoryWorkflowDashboard({
             </Button>
           </div>
         </div>
-        <Card className="border-dashed">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Filters</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="filter-exclude-no-runs"
-                checked={filters.excludeNoRuns}
-                onCheckedChange={(checked) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    excludeNoRuns: Boolean(checked),
-                  }))
-                }
-              />
-              <Label htmlFor="filter-exclude-no-runs" className="text-sm">
-                Hide workflows with no runs
-              </Label>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="filter-branch" className="text-xs uppercase text-muted-foreground">
-                Branch
-              </Label>
-              <Input
-                id="filter-branch"
-                placeholder="e.g. main"
-                value={filters.branch}
-                onChange={(event) =>
-                  setFilters((prev) => ({ ...prev, branch: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="filter-run-name" className="text-xs uppercase text-muted-foreground">
-                Run name contains
-              </Label>
-              <Input
-                id="filter-run-name"
-                placeholder="e.g. deploy"
-                value={filters.runName}
-                onChange={(event) =>
-                  setFilters((prev) => ({ ...prev, runName: event.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="filter-start-date" className="text-xs uppercase text-muted-foreground">
-                  Start date
-                </Label>
-                <Input
-                  id="filter-start-date"
-                  type="datetime-local"
-                  value={filters.startDate ?? ""}
-                  onChange={(event) =>
+        {showFilters ? (
+          <Card className="border-dashed">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Filters</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="filter-exclude-no-runs"
+                  checked={filters.excludeNoRuns}
+                  onCheckedChange={(checked) =>
                     setFilters((prev) => ({
                       ...prev,
-                      startDate: event.target.value || undefined,
+                      excludeNoRuns: Boolean(checked),
                     }))
+                  }
+                />
+                <Label htmlFor="filter-exclude-no-runs" className="text-sm">
+                  Hide workflows with no runs
+                </Label>
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="filter-branch"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Branch
+                </Label>
+                <Input
+                  id="filter-branch"
+                  placeholder="e.g. main"
+                  value={filters.branch}
+                  onChange={(event) =>
+                    setFilters((prev) => ({ ...prev, branch: event.target.value }))
                   }
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="filter-end-date" className="text-xs uppercase text-muted-foreground">
-                  End date
+                <Label
+                  htmlFor="filter-run-name"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Run name contains
                 </Label>
                 <Input
-                  id="filter-end-date"
-                  type="datetime-local"
-                  value={filters.endDate ?? ""}
+                  id="filter-run-name"
+                  placeholder="e.g. deploy"
+                  value={filters.runName}
                   onChange={(event) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      endDate: event.target.value || undefined,
-                    }))
+                    setFilters((prev) => ({ ...prev, runName: event.target.value }))
                   }
                 />
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <div className="grid w-full gap-6 grid-cols-[repeat(auto-fit,minmax(250px,1fr))]">
-          {enabledRepositories.map((repository, index) => {
-            const query = workflowQueries[index];
-
-            return (
-              <Card
-                key={repository}
-                className={cn(
-                  "flex h-full cursor-grab flex-col select-none transition-opacity",
-                  dragging === repository ? "opacity-80" : ""
-                )}
-                draggable={enabledRepositories.length > 1}
-                onDragStart={handleDragStart(repository)}
-                onDragEnter={handleDragEnter(repository)}
-                onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
-              >
-                <CardHeader className="flex flex-row items-start justify-between gap-3">
-                  <CardTitle className="truncate" title={repository}>
-                    <a
-                      href={`https://github.com/${organization}/${repository}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      {repository}
-                    </a>
-                  </CardTitle>
-                  <Checkbox
-                    checked={selectedRepositories.has(repository)}
-                    onCheckedChange={(checked) => {
-                      setSelectedRepositories((previous) => {
-                        const next = new Set(previous);
-                        if (checked) {
-                          next.add(repository);
-                        } else {
-                          next.delete(repository);
-                        }
-                        return next;
-                      });
-                    }}
-                    aria-label={`Select repository ${repository}`}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="filter-start-date"
+                    className="text-xs uppercase text-muted-foreground"
+                  >
+                    Start date
+                  </Label>
+                  <Input
+                    id="filter-start-date"
+                    type="datetime-local"
+                    value={filters.startDate ?? ""}
+                    onChange={(event) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        startDate: event.target.value || undefined,
+                      }))
+                    }
                   />
-                </CardHeader>
-                <CardContent className="flex-1">
-                  {renderQueryState(
-                    query,
-                    repository,
-                    runNameFilter,
-                    (workflow) => setActiveWorkflow(workflow)
+                </div>
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="filter-end-date"
+                    className="text-xs uppercase text-muted-foreground"
+                  >
+                    End date
+                  </Label>
+                  <Input
+                    id="filter-end-date"
+                    type="datetime-local"
+                    value={filters.endDate ?? ""}
+                    onChange={(event) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        endDate: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+        {viewMode === "workflows" ? (
+          <div className="grid w-full gap-6 grid-cols-[repeat(auto-fit,minmax(250px,1fr))]">
+            {enabledRepositories.map((repository, index) => {
+              const query = workflowQueries[index];
+
+              return (
+                <Card
+                  key={repository}
+                  className={cn(
+                    "flex h-full cursor-grab flex-col select-none transition-opacity",
+                    dragging === repository ? "opacity-80" : ""
                   )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  draggable={enabledRepositories.length > 1}
+                  onDragStart={handleDragStart(repository)}
+                  onDragEnter={handleDragEnter(repository)}
+                  onDragOver={handleDragOver}
+                  onDragEnd={handleDragEnd}
+                >
+                  <CardHeader className="flex flex-row items-start justify-between gap-3">
+                    <CardTitle className="truncate" title={repository}>
+                      <a
+                        href={`https://github.com/${organization}/${repository}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        {repository}
+                      </a>
+                    </CardTitle>
+                    <Checkbox
+                      checked={selectedRepositories.has(repository)}
+                      onCheckedChange={(checked) =>
+                        handleRepositorySelectionChange(repository, checked === true)
+                      }
+                      aria-label={`Select repository ${repository}`}
+                    />
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    {renderQueryState(
+                      query,
+                      repository,
+                      runNameFilter,
+                      (workflow) => setActiveWorkflow(workflow)
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <RepositoryDeploymentGrid
+            organization={organization}
+            repositories={enabledRepositories}
+            selectedRepositories={selectedRepositories}
+            onRepositorySelectionChange={handleRepositorySelectionChange}
+          />
+        )}
       </div>
       {selectedRepositories.size > 0 ? (
         <div className="fixed inset-x-0 bottom-4 z-40 px-4">

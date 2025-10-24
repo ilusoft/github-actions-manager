@@ -31,14 +31,19 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
    - Repositories persist in `localStorage`, and you can enable/disable entries, filter by name, reorder the list, or reset the scope entirely.
 
 3. **Explore workflow health**
-   - The _Repository Workflow Dashboard_ fetches workflows for each monitored repository and summarizes their most recent runs.
-   - Filter runs by branch, date range, or run title, and hide workflows without recent activity to focus on active pipelines.
-   - Open the _Workflow Details_ dialog for per-run metadata, timestamps, and quick links back to GitHub.
+  - The _Repository Workflow Dashboard_ fetches workflows for each monitored repository and summarizes their most recent runs.
+  - Filter runs by branch, date range, or run title, and hide workflows without recent activity to focus on active pipelines.
+  - Open the _Workflow Details_ dialog for per-run metadata, timestamps, and quick links back to GitHub.
 
-4. **Run bulk automation**
-   - **Bulk Branch Dialog**: create a new branch across all selected repositories from a shared base ref.
-   - **Bulk PR Dialog**: open matching pull requests across repositories with a shared title, description, and source/target branches.
-   - **Bulk Workflow Run Dialog**: dispatch workflow runs in parallel, including optional input payloads and pattern-based workflow selection.
+4. **Track deployments across environments**
+  - Switch the dashboard view to **Deployments** to open the _Repository Deployment Grid_. Each repository renders a column per detected GitHub environment with the latest non-`inactive` deployment status highlighted in the cell color.
+  - Cells show a quick status label, updated timestamp, initiating actor, and truncated commit message (hover to view the full value). The “History” link opens the GitHub deployment history for the repository/environment pair.
+  - Use **Customize columns** to hide or reorder environments. Preferences persist to `localStorage` per-organization, and controls stay responsive even after reordering. Click **Reset** to restore defaults.
+
+5. **Run bulk automation**
+  - **Bulk Branch Dialog**: create a new branch across all selected repositories from a shared base ref.
+  - **Bulk PR Dialog**: open matching pull requests across repositories with a shared title, description, and source/target branches.
+  - **Bulk Workflow Run Dialog**: dispatch workflow runs in parallel, including optional input payloads and pattern-based workflow selection.
    - Each action surfaces repository-level progress, success/error statuses, and direct links to resulting GitHub resources.
 
 > **Maintenance reminder:** Update this usage section whenever features are added, modified, or removed.
@@ -47,8 +52,10 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 
 - **`src/components/ui/`**: shadcn/ui components (e.g., `button.tsx`). Always generate via CLI.
 - **`src/components/`**: custom application components (composed from `ui/`).
+- **`src/components/repository-deployment-grid.tsx`**: Environment grid that visualizes the latest deployment per repository/environment, supports column customization, and links to GitHub history pages.
 - **`src/lib/`**: utilities such as `utils.ts` exposing `cn()`.
 - **`src/hooks/`**: application hooks (e.g., `useGithubAccessToken()` for token state, `useOrganizationRepositorySelection()` for monitoring scope persistence).
+- **`src/hooks/useDeploymentGridPreferences.ts`**: Persists deployment grid column order and visibility in `localStorage` and syncs changes across tabs.
 - **`components.json`**: shadcn/ui CLI configuration (style, aliases, registry).
 - **`tailwind.config.ts`**: Tailwind theme tokens, container defaults, animation primitives.
 - **`tsconfig.app.json` & `tsconfig.json`**: TypeScript compiler options, `@/*` path alias.
@@ -64,6 +71,7 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 - **Workflow helpers**: `src/lib/github/workflows.ts` fetches workflow YAML, parses it with `js-yaml`, and exposes helpers for dispatching workflow runs.
 - **Access Tokens**: `useGithubAccessToken()` stores only a `hasToken` flag in React state while persisting the actual PAT in `localStorage`. Tokens are write-only (never surfaced back to the UI). Clearing the token removes it from storage and broadcasts a custom event for cross-tab sync.
 - **Monitoring Scope**: `OrgRepoSelector` with `useOrganizationRepositorySelection()` captures the target organization and repositories. Changes persist in `localStorage`, support toggling per-repo monitoring, and offer global reset actions. Treat this as the single source of truth for downstream data fetching.
+- **Deployment visibility**: `RepositoryDeploymentGrid` composes TanStack Query results with persisted preferences (`useDeploymentGridPreferences`) to show environment health at-a-glance, ignoring `inactive` statuses so long-lived environments stay meaningful.
 - **Dashboard orchestration**: `RepositoryWorkflowDashboard` coordinates repository-level workflow summaries, bulk dialogs (`bulk-branch-dialog`, `bulk-pr-dialog`, `bulk-workflow-run-dialog`), and detailed views (`workflow-details-dialog`).
 - **Future routing**: Currently single-page. When routing is required, adopt `react-router-dom` and record the decision in this README.
 - **Testing**: Testing stack not yet configured. When added (e.g., Vitest, Testing Library), document commands and directory layout.
