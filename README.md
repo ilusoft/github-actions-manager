@@ -1,0 +1,100 @@
+# GitHub Actions Manager
+
+React + Vite application for exploring GitHub Actions workflows across repositories within a GitHub organization. This document tracks project rules, architecture decisions, and onboarding steps. Update it whenever new tooling or conventions are introduced.
+
+## Stack Overview
+
+- **Framework**: React 19 with TypeScript 5.9 (`src/` compiled by Vite 7).
+- **Styling**: Tailwind CSS 3.4 with CSS variables, `tailwindcss-animate`, and shadcn/ui New York theme.
+- **UI Components**: shadcn/ui via CLI (`components.json`), Radix UI primitives (`@radix-ui/react-*`), Lucide icons (`lucide-react`), `class-variance-authority`, `clsx`, and `tailwind-merge` utilities.
+- **Data & GitHub integrations**: TanStack Query orchestrating GitHub REST calls, custom API client in `src/lib/github/client.ts`, `js-yaml` for parsing workflow files, and helper modules under `src/lib/github/`.
+- **Tooling**: ESLint 9 (flat config in `eslint.config.js`), PostCSS, Vite dev server & build pipeline.
+
+## Getting Started
+
+- **Install dependencies**: `npm install`
+- **Run locally**: `npm run dev`
+- **Lint**: `npm run lint`
+- **Preview production build**: `npm run preview` (after `npm run build`)
+
+The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/index.css` (Tailwind entry point).
+
+## Project Structure
+
+- **`src/components/ui/`**: shadcn/ui components (e.g., `button.tsx`). Always generate via CLI.
+- **`src/components/`**: custom application components (composed from `ui/`).
+- **`src/lib/`**: utilities such as `utils.ts` exposing `cn()`.
+- **`src/hooks/`**: application hooks (e.g., `useGithubAccessToken()` for token state, `useOrganizationRepositorySelection()` for monitoring scope persistence).
+- **`components.json`**: shadcn/ui CLI configuration (style, aliases, registry).
+- **`tailwind.config.ts`**: Tailwind theme tokens, container defaults, animation primitives.
+- **`tsconfig.app.json` & `tsconfig.json`**: TypeScript compiler options, `@/*` path alias.
+- **`public/`**: static assets served as-is.
+
+## Architecture & Conventions
+
+- **Component-driven**: Keep layout primitives (e.g., `App.tsx`) thin. Build reusable pieces in `src/components`. Keep UI-only logic inside `ui/` components; business logic lives in feature modules under `src/features/` when they are introduced.
+- **Imports**: Use the `@/*` alias instead of relative paths (`@/components/ui/button`). Configure new tsconfig references if additional packages require type-aware linting.
+- **Styling**: Follow the CSS variables defined in `src/index.css`. Apply theme tokens using Tailwind utility classes. Prefer `cn()` helper for conditional class composition.
+- **State & Data**: TanStack Query (React Query) is the standard data layer—use `QueryClientProvider` (configured in `src/main.tsx`) and colocated hooks for GitHub interactions. `src/hooks/githubQueries.ts` centralizes query hooks and reusable fetch helpers.
+- **GitHub API client**: `src/lib/github/client.ts` handles authenticated REST calls, common headers, and error propagation (`GithubApiError`).
+- **Workflow helpers**: `src/lib/github/workflows.ts` fetches workflow YAML, parses it with `js-yaml`, and exposes helpers for dispatching workflow runs.
+- **Access Tokens**: `useGithubAccessToken()` stores only a `hasToken` flag in React state while persisting the actual PAT in `localStorage`. Tokens are write-only (never surfaced back to the UI). Clearing the token removes it from storage and broadcasts a custom event for cross-tab sync.
+- **Monitoring Scope**: `OrgRepoSelector` with `useOrganizationRepositorySelection()` captures the target organization and repositories. Changes persist in `localStorage`, support toggling per-repo monitoring, and offer global reset actions. Treat this as the single source of truth for downstream data fetching.
+- **Dashboard orchestration**: `RepositoryWorkflowDashboard` coordinates repository-level workflow summaries, bulk dialogs (`bulk-branch-dialog`, `bulk-pr-dialog`, `bulk-workflow-run-dialog`), and detailed views (`workflow-details-dialog`).
+- **Future routing**: Currently single-page. When routing is required, adopt `react-router-dom` and record the decision in this README.
+- **Testing**: Testing stack not yet configured. When added (e.g., Vitest, Testing Library), document commands and directory layout.
+
+### Architecture Overview
+
+1. **Bootstrap**: `src/main.tsx` mounts `App.tsx`, wraps the tree in `QueryClientProvider`, and loads shared Tailwind styles.
+2. **Authentication**: `App.tsx` renders `AccessTokenDialog`, powered by `useGithubAccessToken()`, to capture a personal access token and invalidate GitHub queries on change.
+3. **Scope selection**: `OrgRepoSelector` consumes TanStack Query hooks (`useViewerOrganizations`, `useOrganizationRepositories`) and `useOrganizationRepositorySelection()` to persist the organization/repository scope.
+4. **Dashboards**: `RepositoryWorkflowDashboard` fetches workflow summaries (`useRepositoryWorkflows`, `useWorkflowRuns`) and exposes bulk actions for branches, pull requests, and workflow dispatches.
+5. **Workflow orchestration**: Bulk workflow operations rely on helpers in `src/lib/github/workflows.ts` and `src/hooks/githubQueries.ts` to normalize filters, parse workflow YAML, and dispatch runs with consistent error handling.
+
+### Components Dependency Diagram
+
+```mermaid
+graph TD
+  App[App.tsx] --> AccessTokenDialog
+  App --> OrgRepoSelector
+  OrgRepoSelector --> useOrganizationRepositorySelection
+  OrgRepoSelector --> useViewerOrganizations
+  OrgRepoSelector --> useOrganizationRepositories
+  OrgRepoSelector --> RepositoryWorkflowDashboard
+  RepositoryWorkflowDashboard --> useRepositoryWorkflows
+  RepositoryWorkflowDashboard --> BulkBranchDialog
+  RepositoryWorkflowDashboard --> BulkPrDialog
+  RepositoryWorkflowDashboard --> BulkWorkflowRunDialog
+  RepositoryWorkflowDashboard --> WorkflowDetailsDialog
+  BulkWorkflowRunDialog --> fetchWorkflowInputs
+  BulkWorkflowRunDialog --> dispatchWorkflow
+  useRepositoryWorkflows --> fetchRepositoryWorkflows
+  fetchRepositoryWorkflows --> fetchWorkflowRuns
+  fetchWorkflowRuns --> fetchGithubJson
+  fetchGithubJson --> GithubAPI[(GitHub REST API)]
+```
+
+## Tailwind & shadcn Guidelines
+
+- Tailwind scans `index.html` and `src/**/*.{ts,tsx}` for class usage (`tailwind.config.ts`). Update the glob if we introduce MDX or other templates.
+- All new components from shadcn/ui must be added via CLI: `npx shadcn@latest add <component>`. The CLI keeps `components.json` and Tailwind tokens synchronized.
+- Dark mode toggles via the `class` strategy; apply the `dark` class on `<html>` (future layout component should manage this).
+
+## GitHub Integration Roadmap
+
+- **Authentication**: Personal access token (PAT) for now. Future tasks will introduce OAuth App flow and secure token storage.
+- **Token capture**: Launch the access-token dialog from the header. The dialog saves tokens to `localStorage` under an application-specific key, hides the value after submission, and offers a "Clear stored token" action. Document required scopes alongside future API integrations.
+- **Data Access**: Plan to wrap GitHub REST and GraphQL APIs in typed clients under `src/lib/github/` with caching.
+- **Permissions**: Document required PAT scopes (likely `repo`, `workflow`, `actions:read`) when implemented.
+
+## Deployment Considerations
+
+- Ensure environment variables use Vite `import.meta.env` conventions (`VITE_*`). Document each variable here as they are added.
+- Build output served via static hosting (e.g., GitHub Pages, Netlify). Add deployment steps once selected.
+
+## Maintenance Notes
+
+- Keep dependencies up to date. When bumping major versions, capture breaking changes in this file.
+- Any new linting or formatting rules must be described here along with expected CI checks.
+- Update this README whenever we introduce tooling, architectural patterns, or operational processes.

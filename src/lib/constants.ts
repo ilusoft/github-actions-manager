@@ -1,0 +1,1 @@
+export const WORKFLOW_RUNS_PAGE_SIZE = 50;
