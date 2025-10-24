@@ -5,7 +5,10 @@ import { fileURLToPath, URL } from 'node:url'
 // https://vite.dev/config/
 export default defineConfig(() => {
   const rawBase = process.env.VITE_BASE_PATH
-  const base = rawBase ? `${rawBase.replace(/\/?$/, '/')}` : '/'
+  let base = rawBase ?? './'
+  if (!base.endsWith('/')) {
+    base = `${base}/`
+  }
 
   return {
     base,
