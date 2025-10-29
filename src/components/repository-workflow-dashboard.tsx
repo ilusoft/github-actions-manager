@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import {
   useQueries,
   useQueryClient,
@@ -10,6 +17,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +38,11 @@ import {
 import { GithubApiError } from "@/lib/github/client";
 import { RefreshCwIcon } from "lucide-react";
 import { BulkBranchDialog } from "@/components/bulk-branch-dialog";
+import {
+  BulkBranchDeleteDialog,
+  type BranchDeletionTarget,
+  type BulkBranchDeleteResult,
+} from "@/components/bulk-branch-delete-dialog";
 import { BulkPrDialog } from "@/components/bulk-pr-dialog";
 import {
   BulkWorkflowRunDialog,
@@ -34,6 +53,7 @@ import {
   filterWorkflowByRunName,
 } from "@/components/workflow-details-dialog";
 import { RepositoryDeploymentGrid } from "@/components/repository-deployment-grid";
+import { RepositoryBranchTree } from "@/components/repository-branch-tree";
 
 const STATUS_CLASSES: Record<WorkflowStatus, string> = {
   never_run: "bg-muted text-muted-foreground",
@@ -82,19 +102,28 @@ type WorkflowFilters = {
   endDate?: string;
 };
 
+type BranchViewSettings = {
+  visibility: "all" | "protected" | "unprotected";
+  perPage: number;
+  limit: number;
+  name: string;
+};
+
 export function RepositoryWorkflowDashboard({
   organization,
   repositories,
   onReorder,
 }: RepositoryWorkflowDashboardProps) {
   const [order, setOrder] = useState(repositories);
-  const [viewMode, setViewMode] = useState<"workflows" | "deployments">(
-    "workflows"
-  );
+  const [viewMode, setViewMode] = useState<
+    "workflows" | "deployments" | "branches"
+  >("workflows");
   const [dragging, setDragging] = useState<string | null>(null);
   const draggingRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date());
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(
+    () => new Date()
+  );
   const lastRefreshedLabel = useMemo(
     () => lastRefreshedAt.toLocaleString(),
     [lastRefreshedAt]
@@ -109,27 +138,42 @@ export function RepositoryWorkflowDashboard({
   const [debouncedFilters, setDebouncedFilters] = useState<WorkflowFilters>(
     () => ({ ...filters })
   );
+  const [branchSettings, setBranchSettings] = useState<BranchViewSettings>(
+    () => ({
+      visibility: "all",
+      perPage: 10,
+      limit: 10,
+      name: "",
+    })
+  );
   const [selectedRepositories, setSelectedRepositories] = useState<Set<string>>(
     () => new Set()
   );
+  const [selectedBranchesMap, setSelectedBranchesMap] = useState<
+    Map<string, Set<string>>
+  >(() => new Map());
   const [isBulkBranchDialogOpen, setIsBulkBranchDialogOpen] = useState(false);
+  const [isBulkBranchDeleteDialogOpen, setIsBulkBranchDeleteDialogOpen] =
+    useState(false);
   const [isBulkPrDialogOpen, setIsBulkPrDialogOpen] = useState(false);
-  const [isBulkWorkflowDialogOpen, setIsBulkWorkflowDialogOpen] = useState(false);
-  const [bulkWorkflowOptions, setBulkWorkflowOptions] = useState<BulkWorkflowOption[]>([]);
-  const [bulkWorkflowError, setBulkWorkflowError] = useState<string | null>(null);
+  const [isBulkWorkflowDialogOpen, setIsBulkWorkflowDialogOpen] =
+    useState(false);
+  const [bulkWorkflowOptions, setBulkWorkflowOptions] = useState<
+    BulkWorkflowOption[]
+  >([]);
+  const [bulkWorkflowError, setBulkWorkflowError] = useState<string | null>(
+    null
+  );
   const [activeWorkflow, setActiveWorkflow] =
     useState<RepositoryWorkflowSummary | null>(null);
-  const handleWorkflowDialogChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        setBulkWorkflowOptions([]);
-        setBulkWorkflowError(null);
-      }
+  const handleWorkflowDialogChange = useCallback((open: boolean) => {
+    if (!open) {
+      setBulkWorkflowOptions([]);
+      setBulkWorkflowError(null);
+    }
 
-      setIsBulkWorkflowDialogOpen(open);
-    },
-    []
-  );
+    setIsBulkWorkflowDialogOpen(open);
+  }, []);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -165,6 +209,27 @@ export function RepositoryWorkflowDashboard({
     () => Array.from(selectedRepositories),
     [selectedRepositories]
   );
+  const selectedBranchCount = useMemo(() => {
+    let count = 0;
+    selectedBranchesMap.forEach((branches) => {
+      count += branches.size;
+    });
+    return count;
+  }, [selectedBranchesMap]);
+  const selectedBranchEntries = useMemo<BranchDeletionTarget[]>(() => {
+    const entries: BranchDeletionTarget[] = [];
+    selectedBranchesMap.forEach((branches, repository) => {
+      branches.forEach((branch) => {
+        entries.push({ repository, branch });
+      });
+    });
+    return entries.sort((a, b) => {
+      if (a.repository === b.repository) {
+        return a.branch.localeCompare(b.branch);
+      }
+      return a.repository.localeCompare(b.repository);
+    });
+  }, [selectedBranchesMap]);
 
   const workflowQueries = useQueries({
     queries: enabledRepositories.map((repository) => ({
@@ -231,7 +296,9 @@ export function RepositoryWorkflowDashboard({
       if (action === "run-workflow") {
         const selected = Array.from(selectedRepositories);
 
-        const missingData = selected.some((repo) => !workflowSummariesByRepo.has(repo));
+        const missingData = selected.some(
+          (repo) => !workflowSummariesByRepo.has(repo)
+        );
         if (missingData) {
           setBulkWorkflowOptions([]);
           setBulkWorkflowError(
@@ -280,7 +347,9 @@ export function RepositoryWorkflowDashboard({
           });
         });
 
-        const intersecting: BulkWorkflowOption[] = Array.from(workflowCounts.entries())
+        const intersecting: BulkWorkflowOption[] = Array.from(
+          workflowCounts.entries()
+        )
           .filter(([, value]) => value.repos === selected.length)
           .map(([, value]) => ({
             name: value.name,
@@ -371,14 +440,187 @@ export function RepositoryWorkflowDashboard({
     []
   );
 
+  const handleBranchSelectionChange = useCallback(
+    (repository: string, branch: string, checked: boolean) => {
+      setSelectedBranchesMap((previous) => {
+        const current = previous.get(repository);
+        const hasBranch = current?.has(branch) ?? false;
+
+        if (checked) {
+          if (hasBranch) {
+            return previous;
+          }
+
+          const next = new Map(previous);
+          const nextSet = new Set(current ?? []);
+          nextSet.add(branch);
+          next.set(repository, nextSet);
+          return next;
+        }
+
+        if (!hasBranch) {
+          return previous;
+        }
+
+        const next = new Map(previous);
+        const nextSet = new Set(current);
+        nextSet.delete(branch);
+
+        if (nextSet.size > 0) {
+          next.set(repository, nextSet);
+        } else {
+          next.delete(repository);
+        }
+
+        return next;
+      });
+    },
+    []
+  );
+
+  const clearSelectedBranches = useCallback(() => {
+    setSelectedBranchesMap((previous) =>
+      previous.size === 0 ? previous : new Map()
+    );
+  }, []);
+
   const headerTitle =
-    viewMode === "workflows" ? "Repository workflows" : "Deployment overview";
+    viewMode === "workflows"
+      ? "Repository workflows"
+      : viewMode === "deployments"
+      ? "Deployment overview"
+      : "Branches overview";
   const headerDescription =
     viewMode === "workflows"
       ? "Review workflow health across the selected repositories."
-      : "Compare latest deployments per environment across the selected repositories.";
+      : viewMode === "deployments"
+      ? "Compare latest deployments per environment across the selected repositories."
+      : "Inspect branch activity and latest commits across the selected repositories.";
 
-  const showFilters = viewMode === "workflows";
+  const branchQueryOptions = useMemo(() => {
+    const protectedFilter =
+      branchSettings.visibility === "protected"
+        ? true
+        : branchSettings.visibility === "unprotected"
+        ? false
+        : undefined;
+
+    return {
+      perPage: branchSettings.perPage,
+      limit: branchSettings.limit,
+      protected: protectedFilter,
+    };
+  }, [branchSettings]);
+
+  const branchNameFilter = branchSettings.name.trim();
+  const showWorkflowFilters = viewMode === "workflows";
+  const showBranchFilters = viewMode === "branches";
+
+  useEffect(() => {
+    if (viewMode !== "branches") {
+      setSelectedBranchesMap((previous) =>
+        previous.size === 0 ? previous : new Map()
+      );
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    setSelectedBranchesMap((previous) => {
+      if (previous.size === 0) {
+        return previous;
+      }
+
+      const allowed = new Set(enabledRepositories);
+      let changed = false;
+      const next = new Map<string, Set<string>>();
+
+      previous.forEach((branches, repository) => {
+        if (!allowed.has(repository)) {
+          changed = true;
+          return;
+        }
+
+        next.set(repository, branches);
+      });
+
+      return changed ? next : previous;
+    });
+  }, [enabledRepositories]);
+
+  const handleBranchDeleteResult = useCallback(
+    (result: BulkBranchDeleteResult) => {
+      if (result.deleted.length > 0) {
+        setSelectedBranchesMap((previous) => {
+          const next = new Map(previous);
+          let changed = false;
+
+          result.deleted.forEach(
+            ({ repository, branch }: BranchDeletionTarget) => {
+              const current = next.get(repository);
+              if (!current?.has(branch)) {
+                return;
+              }
+
+              changed = true;
+              const nextSet = new Set(current);
+              nextSet.delete(branch);
+
+              if (nextSet.size > 0) {
+                next.set(repository, nextSet);
+              } else {
+                next.delete(repository);
+              }
+            }
+          );
+
+          return changed ? next : previous;
+        });
+
+        if (organization) {
+          const reposToRefresh = Array.from(
+            new Set(
+              result.deleted.map(
+                (entry: BranchDeletionTarget) => entry.repository
+              )
+            )
+          );
+
+          reposToRefresh.forEach((repo) => {
+            queryClient.invalidateQueries({
+              queryKey: [
+                "github",
+                "org",
+                organization,
+                "repo",
+                repo,
+                "branches",
+              ],
+            });
+          });
+        }
+      }
+    },
+    [organization, queryClient]
+  );
+
+  const clampBranchCount = useCallback((value: number) => {
+    return Math.min(Math.max(value, 1), 100);
+  }, []);
+
+  const handleBranchNumericChange = useCallback(
+    (field: "perPage" | "limit") => (event: ChangeEvent<HTMLInputElement>) => {
+      const raw = Number.parseInt(event.target.value, 10);
+      if (Number.isNaN(raw)) {
+        return;
+      }
+
+      setBranchSettings((previous) => ({
+        ...previous,
+        [field]: clampBranchCount(raw),
+      }));
+    },
+    [clampBranchCount]
+  );
 
   if (!organization || enabledRepositories.length === 0) {
     return null;
@@ -398,6 +640,28 @@ export function RepositoryWorkflowDashboard({
         repositories={selectedRepositoriesArray}
         open={isBulkBranchDialogOpen}
         onOpenChange={(open) => setIsBulkBranchDialogOpen(open)}
+      />
+      <BulkBranchDeleteDialog
+        organization={organization}
+        branches={selectedBranchEntries}
+        open={isBulkBranchDeleteDialogOpen}
+        onOpenChange={(open: boolean) => {
+          if (!open && selectedBranchCount === 0) {
+            setIsBulkBranchDeleteDialogOpen(false);
+            return;
+          }
+
+          if (!open && isBulkBranchDeleteDialogOpen) {
+            setIsBulkBranchDeleteDialogOpen(false);
+            return;
+          }
+
+          setIsBulkBranchDeleteDialogOpen(open);
+        }}
+        onCompleted={(result: BulkBranchDeleteResult) => {
+          handleBranchDeleteResult(result);
+          setIsBulkBranchDeleteDialogOpen(false);
+        }}
       />
       <BulkPrDialog
         organization={organization}
@@ -439,6 +703,14 @@ export function RepositoryWorkflowDashboard({
               >
                 Deployments
               </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={viewMode === "branches" ? "default" : "ghost"}
+                onClick={() => setViewMode("branches")}
+              >
+                Branches
+              </Button>
             </div>
             <span className="text-xs text-muted-foreground">
               Last refreshed: {lastRefreshedLabel}
@@ -474,6 +746,16 @@ export function RepositoryWorkflowDashboard({
                       "environments",
                     ],
                   });
+                  queryClient.invalidateQueries({
+                    queryKey: [
+                      "github",
+                      "org",
+                      organization,
+                      "repo",
+                      repo,
+                      "branches",
+                    ],
+                  });
                 });
 
                 setLastRefreshedAt(new Date());
@@ -484,7 +766,7 @@ export function RepositoryWorkflowDashboard({
             </Button>
           </div>
         </div>
-        {showFilters ? (
+        {showWorkflowFilters ? (
           <Card className="border-dashed">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Filters</CardTitle>
@@ -517,7 +799,10 @@ export function RepositoryWorkflowDashboard({
                   placeholder="e.g. main"
                   value={filters.branch}
                   onChange={(event) =>
-                    setFilters((prev) => ({ ...prev, branch: event.target.value }))
+                    setFilters((prev) => ({
+                      ...prev,
+                      branch: event.target.value,
+                    }))
                   }
                 />
               </div>
@@ -533,7 +818,10 @@ export function RepositoryWorkflowDashboard({
                   placeholder="e.g. deploy"
                   value={filters.runName}
                   onChange={(event) =>
-                    setFilters((prev) => ({ ...prev, runName: event.target.value }))
+                    setFilters((prev) => ({
+                      ...prev,
+                      runName: event.target.value,
+                    }))
                   }
                 />
               </div>
@@ -580,6 +868,100 @@ export function RepositoryWorkflowDashboard({
             </CardContent>
           </Card>
         ) : null}
+        {showBranchFilters ? (
+          <Card className="border-dashed">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Branch settings</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-1">
+                <Label
+                  htmlFor="branch-visibility"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Visibility
+                </Label>
+                <Select
+                  value={branchSettings.visibility}
+                  onValueChange={(value: "all" | "protected" | "unprotected") =>
+                    setBranchSettings((previous) => ({
+                      ...previous,
+                      visibility: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="branch-visibility">
+                    <SelectValue placeholder="Select visibility" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All branches</SelectItem>
+                    <SelectItem value="protected">Protected only</SelectItem>
+                    <SelectItem value="unprotected">
+                      Unprotected only
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="branch-per-page"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Branches per request
+                </Label>
+                <Input
+                  id="branch-per-page"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={branchSettings.perPage}
+                  onChange={handleBranchNumericChange("perPage")}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Controls the GitHub API page size (max 100).
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="branch-limit"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Maximum branches displayed
+                </Label>
+                <Input
+                  id="branch-limit"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={branchSettings.limit}
+                  onChange={handleBranchNumericChange("limit")}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Caps the number of branches shown per repository.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="branch-name-filter"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Branch name contains
+                </Label>
+                <Input
+                  id="branch-name-filter"
+                  placeholder="e.g. release"
+                  value={branchSettings.name}
+                  onChange={(event) =>
+                    setBranchSettings((previous) => ({
+                      ...previous,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
         {viewMode === "workflows" ? (
           <div className="grid w-full gap-6 grid-cols-[repeat(auto-fit,minmax(250px,1fr))]">
             {enabledRepositories.map((repository, index) => {
@@ -612,7 +994,10 @@ export function RepositoryWorkflowDashboard({
                     <Checkbox
                       checked={selectedRepositories.has(repository)}
                       onCheckedChange={(checked) =>
-                        handleRepositorySelectionChange(repository, checked === true)
+                        handleRepositorySelectionChange(
+                          repository,
+                          checked === true
+                        )
                       }
                       aria-label={`Select repository ${repository}`}
                     />
@@ -629,16 +1014,25 @@ export function RepositoryWorkflowDashboard({
               );
             })}
           </div>
-        ) : (
+        ) : viewMode === "deployments" ? (
           <RepositoryDeploymentGrid
             organization={organization}
             repositories={enabledRepositories}
             selectedRepositories={selectedRepositories}
             onRepositorySelectionChange={handleRepositorySelectionChange}
           />
+        ) : (
+          <RepositoryBranchTree
+            organization={organization}
+            repositories={enabledRepositories}
+            branchOptions={branchQueryOptions}
+            nameFilter={branchNameFilter}
+            selectedBranches={selectedBranchesMap}
+            onBranchSelectionChange={handleBranchSelectionChange}
+          />
         )}
       </div>
-      {selectedRepositories.size > 0 ? (
+      {viewMode !== "branches" && selectedRepositories.size > 0 ? (
         <div className="fixed inset-x-0 bottom-4 z-40 px-4">
           <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75">
             <div className="text-sm text-muted-foreground">
@@ -680,6 +1074,32 @@ export function RepositoryWorkflowDashboard({
           </div>
         </div>
       ) : null}
+      {viewMode === "branches" && selectedBranchCount > 0 ? (
+        <div className="fixed inset-x-0 bottom-4 z-40 px-4">
+          <div className="mx-auto flex max-w-4xl flex-col gap-3 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              {selectedBranchCount} branch
+              {selectedBranchCount === 1 ? "" : "es"} selected
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={clearSelectedBranches}
+              >
+                Clear selection
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setIsBulkBranchDeleteDialogOpen(true)}
+              >
+                Delete branches
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -704,7 +1124,9 @@ const renderQueryState = (
 
   const workflows = (query.data ?? [])
     .map((workflow) => filterWorkflowByRunName(workflow, runNameFilter))
-    .filter((workflow): workflow is RepositoryWorkflowSummary => workflow !== null);
+    .filter(
+      (workflow): workflow is RepositoryWorkflowSummary => workflow !== null
+    );
 
   if (workflows.length === 0) {
     return <p className="text-sm text-muted-foreground">No workflows found.</p>;
@@ -775,4 +1197,3 @@ const getWorkflowStatus = (
 
   return "unknown";
 };
-

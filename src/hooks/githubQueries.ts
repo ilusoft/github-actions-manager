@@ -2,6 +2,11 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { fetchGithubJson, GithubApiError } from "@/lib/github/client";
 import { WORKFLOW_RUNS_PAGE_SIZE } from "@/lib/constants";
+import {
+  fetchRepositoryBranches,
+  type RepositoryBranchRequestOptions,
+  type RepositoryBranchSummary,
+} from "@/lib/github/branches";
 
 interface GithubOrganization {
   login: string;
@@ -344,6 +349,33 @@ export const useWorkflowRuns = (
         page
       ),
     staleTime: 1000 * 30,
+  });
+
+export const useRepositoryBranches = (
+  organization?: string,
+  repository?: string,
+  options?: RepositoryBranchRequestOptions
+): UseQueryResult<RepositoryBranchSummary[], GithubApiError> =>
+  useQuery({
+    queryKey: [
+      "github",
+      "org",
+      organization,
+      "repo",
+      repository,
+      "branches",
+      options?.perPage ?? 10,
+      options?.limit ?? options?.perPage ?? 10,
+      typeof options?.protected === "boolean" ? options.protected : "all",
+    ],
+    enabled: Boolean(organization && repository),
+    queryFn: () =>
+      fetchRepositoryBranches(
+        organization as string,
+        repository as string,
+        options
+      ),
+    staleTime: 1000 * 60,
   });
 
 export const useOrganizationRepositories = (
