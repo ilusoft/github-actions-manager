@@ -54,6 +54,7 @@ import {
 } from "@/components/workflow-details-dialog";
 import { RepositoryDeploymentGrid } from "@/components/repository-deployment-grid";
 import { RepositoryBranchTree } from "@/components/repository-branch-tree";
+import { RepositoryPullRequestTree } from "@/components/repository-pull-request-tree";
 
 const STATUS_CLASSES: Record<WorkflowStatus, string> = {
   never_run: "bg-muted text-muted-foreground",
@@ -102,6 +103,12 @@ type WorkflowFilters = {
   endDate?: string;
 };
 
+type RepositoryViewMode =
+  | "workflows"
+  | "deployments"
+  | "branches"
+  | "pullRequests";
+
 type BranchViewSettings = {
   visibility: "all" | "protected" | "unprotected";
   perPage: number;
@@ -109,15 +116,35 @@ type BranchViewSettings = {
   name: string;
 };
 
+type PullRequestViewSettings = {
+  state: "open" | "closed" | "all";
+  perPage: number;
+  base: string;
+  author: string;
+};
+
+const DASHBOARD_VIEW_STORAGE_KEY = "repository-workflow-dashboard:view-mode";
+
+const isRepositoryViewMode = (value: string | null): value is RepositoryViewMode =>
+  value === "workflows" ||
+  value === "deployments" ||
+  value === "branches" ||
+  value === "pullRequests";
+
 export function RepositoryWorkflowDashboard({
   organization,
   repositories,
   onReorder,
 }: RepositoryWorkflowDashboardProps) {
   const [order, setOrder] = useState(repositories);
-  const [viewMode, setViewMode] = useState<
-    "workflows" | "deployments" | "branches"
-  >("workflows");
+  const [viewMode, setViewMode] = useState<RepositoryViewMode>(() => {
+    if (typeof window === "undefined") {
+      return "workflows";
+    }
+
+    const stored = window.localStorage.getItem(DASHBOARD_VIEW_STORAGE_KEY);
+    return isRepositoryViewMode(stored) ? stored : "workflows";
+  });
   const [dragging, setDragging] = useState<string | null>(null);
   const draggingRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
@@ -146,6 +173,13 @@ export function RepositoryWorkflowDashboard({
       name: "",
     })
   );
+  const [pullRequestSettings, setPullRequestSettings] =
+    useState<PullRequestViewSettings>(() => ({
+      state: "open",
+      perPage: 10,
+      base: "",
+      author: "",
+    }));
   const [selectedRepositories, setSelectedRepositories] = useState<Set<string>>(
     () => new Set()
   );
@@ -188,6 +222,14 @@ export function RepositoryWorkflowDashboard({
       areArraysEqual(previous, repositories) ? previous : repositories
     );
   }, [repositories]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(DASHBOARD_VIEW_STORAGE_KEY, viewMode);
+  }, [viewMode]);
 
   const enabledRepositories = useMemo(() => order.filter(Boolean), [order]);
   const serverFilterOptions = useMemo(
@@ -245,7 +287,7 @@ export function RepositoryWorkflowDashboard({
         serverFilterOptions.endDate ?? "",
         serverFilterOptions.excludeNoRuns ?? false,
       ],
-      enabled: Boolean(organization),
+      enabled: Boolean(organization && viewMode === "workflows"),
       queryFn: () => {
         if (!organization) {
           throw new GithubApiError("Missing organization", 400);
@@ -489,13 +531,17 @@ export function RepositoryWorkflowDashboard({
       ? "Repository workflows"
       : viewMode === "deployments"
       ? "Deployment overview"
-      : "Branches overview";
+      : viewMode === "branches"
+      ? "Branches overview"
+      : "Pull request overview";
   const headerDescription =
     viewMode === "workflows"
       ? "Review workflow health across the selected repositories."
       : viewMode === "deployments"
       ? "Compare latest deployments per environment across the selected repositories."
-      : "Inspect branch activity and latest commits across the selected repositories.";
+      : viewMode === "branches"
+      ? "Inspect branch activity and latest commits across the selected repositories."
+      : "Track pull request activity, status, and authors across the selected repositories.";
 
   const branchQueryOptions = useMemo(() => {
     const protectedFilter =
@@ -513,8 +559,20 @@ export function RepositoryWorkflowDashboard({
   }, [branchSettings]);
 
   const branchNameFilter = branchSettings.name.trim();
+  const pullRequestQueryOptions = useMemo(() => {
+    const base = pullRequestSettings.base.trim();
+    const author = pullRequestSettings.author.trim();
+
+    return {
+      perPage: pullRequestSettings.perPage,
+      state: pullRequestSettings.state,
+      base: base || undefined,
+      author: author || undefined,
+    };
+  }, [pullRequestSettings]);
   const showWorkflowFilters = viewMode === "workflows";
   const showBranchFilters = viewMode === "branches";
+  const showPullRequestFilters = viewMode === "pullRequests";
 
   useEffect(() => {
     if (viewMode !== "branches") {
@@ -603,7 +661,7 @@ export function RepositoryWorkflowDashboard({
     [organization, queryClient]
   );
 
-  const clampBranchCount = useCallback((value: number) => {
+  const clampPageSize = useCallback((value: number) => {
     return Math.min(Math.max(value, 1), 100);
   }, []);
 
@@ -616,10 +674,25 @@ export function RepositoryWorkflowDashboard({
 
       setBranchSettings((previous) => ({
         ...previous,
-        [field]: clampBranchCount(raw),
+        [field]: clampPageSize(raw),
       }));
     },
-    [clampBranchCount]
+    [clampPageSize]
+  );
+
+  const handlePullRequestPerPageChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const raw = Number.parseInt(event.target.value, 10);
+      if (Number.isNaN(raw)) {
+        return;
+      }
+
+      setPullRequestSettings((previous) => ({
+        ...previous,
+        perPage: clampPageSize(raw),
+      }));
+    },
+    [clampPageSize]
   );
 
   if (!organization || enabledRepositories.length === 0) {
@@ -711,6 +784,14 @@ export function RepositoryWorkflowDashboard({
               >
                 Branches
               </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={viewMode === "pullRequests" ? "default" : "ghost"}
+                onClick={() => setViewMode("pullRequests")}
+              >
+                Pull Requests
+              </Button>
             </div>
             <span className="text-xs text-muted-foreground">
               Last refreshed: {lastRefreshedLabel}
@@ -724,43 +805,72 @@ export function RepositoryWorkflowDashboard({
                   return;
                 }
 
-                enabledRepositories.forEach((repo) => {
-                  queryClient.invalidateQueries({
-                    queryKey: [
-                      "github",
-                      "org",
-                      organization,
-                      "repo",
-                      repo,
-                      "workflows",
-                    ],
-                  });
-                  queryClient.invalidateQueries({
-                    queryKey: [
-                      "github",
-                      "org",
-                      organization,
-                      "repo",
-                      repo,
-                      "deployments",
-                      "environments",
-                    ],
-                  });
-                  queryClient.invalidateQueries({
-                    queryKey: [
-                      "github",
-                      "org",
-                      organization,
-                      "repo",
-                      repo,
-                      "branches",
-                    ],
-                  });
-                });
+                const invalidateForRepository = (repo: string) => {
+                  switch (viewMode) {
+                    case "workflows":
+                      queryClient.invalidateQueries({
+                        queryKey: [
+                          "github",
+                          "org",
+                          organization,
+                          "repo",
+                          repo,
+                          "workflows",
+                        ],
+                      });
+                      break;
+                    case "deployments":
+                      queryClient.invalidateQueries({
+                        queryKey: [
+                          "github",
+                          "org",
+                          organization,
+                          "repo",
+                          repo,
+                          "deployments",
+                          "environments",
+                        ],
+                      });
+                      break;
+                    case "branches":
+                      queryClient.invalidateQueries({
+                        queryKey: [
+                          "github",
+                          "org",
+                          organization,
+                          "repo",
+                          repo,
+                          "branches",
+                        ],
+                      });
+                      break;
+                    case "pullRequests":
+                      queryClient.invalidateQueries({
+                        queryKey: [
+                          "github",
+                          "org",
+                          organization,
+                          "repo",
+                          repo,
+                          "pulls",
+                          pullRequestQueryOptions.perPage,
+                          pullRequestQueryOptions.state,
+                          pullRequestQueryOptions.base ?? "",
+                          pullRequestQueryOptions.author ?? "",
+                          1,
+                        ],
+                      });
+                      break;
+                    default:
+                      break;
+                  }
+                };
+
+                enabledRepositories.forEach(invalidateForRepository);
 
                 setLastRefreshedAt(new Date());
               }}
-              aria-label="Refresh workflow data"
+              aria-label="Refresh view data"
             >
               <RefreshCwIcon className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -962,6 +1072,104 @@ export function RepositoryWorkflowDashboard({
             </CardContent>
           </Card>
         ) : null}
+        {showPullRequestFilters ? (
+          <Card className="border-dashed">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Pull request filters</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-1">
+                <Label
+                  htmlFor="pull-request-state"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  State
+                </Label>
+                <Select
+                  value={pullRequestSettings.state}
+                  onValueChange={(value: "open" | "closed" | "all") =>
+                    setPullRequestSettings((previous) => ({
+                      ...previous,
+                      state: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="pull-request-state">
+                    <SelectValue placeholder="Select state" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Open</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                    <SelectItem value="all">All</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="pull-request-base"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Base branch
+                </Label>
+                <Input
+                  id="pull-request-base"
+                  placeholder="e.g. main"
+                  value={pullRequestSettings.base}
+                  onChange={(event) =>
+                    setPullRequestSettings((previous) => ({
+                      ...previous,
+                      base: event.target.value,
+                    }))
+                  }
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Filters pull requests targeting the specified base branch.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="pull-request-author"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Author login contains
+                </Label>
+                <Input
+                  id="pull-request-author"
+                  placeholder="e.g. octocat"
+                  value={pullRequestSettings.author}
+                  onChange={(event) =>
+                    setPullRequestSettings((previous) => ({
+                      ...previous,
+                      author: event.target.value,
+                    }))
+                  }
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Matches GitHub usernames (case-insensitive, partial match).
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="pull-request-per-page"
+                  className="text-xs uppercase text-muted-foreground"
+                >
+                  Pull requests per request
+                </Label>
+                <Input
+                  id="pull-request-per-page"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={pullRequestSettings.perPage}
+                  onChange={handlePullRequestPerPageChange}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Controls the GitHub API page size (max 100).
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
         {viewMode === "workflows" ? (
           <div className="grid w-full gap-6 grid-cols-[repeat(auto-fit,minmax(250px,1fr))]">
             {enabledRepositories.map((repository, index) => {
@@ -1021,7 +1229,7 @@ export function RepositoryWorkflowDashboard({
             selectedRepositories={selectedRepositories}
             onRepositorySelectionChange={handleRepositorySelectionChange}
           />
-        ) : (
+        ) : viewMode === "branches" ? (
           <RepositoryBranchTree
             organization={organization}
             repositories={enabledRepositories}
@@ -1029,6 +1237,12 @@ export function RepositoryWorkflowDashboard({
             nameFilter={branchNameFilter}
             selectedBranches={selectedBranchesMap}
             onBranchSelectionChange={handleBranchSelectionChange}
+          />
+        ) : (
+          <RepositoryPullRequestTree
+            organization={organization}
+            repositories={enabledRepositories}
+            options={pullRequestQueryOptions}
           />
         )}
       </div>

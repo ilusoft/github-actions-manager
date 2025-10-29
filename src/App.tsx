@@ -1,12 +1,17 @@
-import { Button } from '@/components/ui/button'
-import { AccessTokenDialog } from '@/components/access-token-dialog'
-import { OrgRepoSelector } from '@/components/org-repo-selector'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useGithubAccessToken } from '@/hooks/useGithubAccessToken'
-import { HelpCircle } from 'lucide-react'
+import { Button } from "@/components/ui/button";
+import { AccessTokenDialog } from "@/components/access-token-dialog";
+import { OrgRepoSelector } from "@/components/org-repo-selector";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useGithubAccessToken } from "@/hooks/useGithubAccessToken";
+import { HelpCircle } from "lucide-react";
 
 function App() {
-  const { hasToken, saveToken, clearToken } = useGithubAccessToken()
+  const { hasToken, saveToken, clearToken } = useGithubAccessToken();
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -14,11 +19,11 @@ function App() {
         <div className="container flex items-center justify-between py-6">
           <div className="flex flex-col gap-2">
             <p className="text-sm font-semibold text-primary">
-              GitHub Actions Manager
+              GitHub Repositories Manager
             </p>
             <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                Explore workflows across your organization
+                Explore repositories across your organization
               </h1>
               <TooltipProvider>
                 <Tooltip>
@@ -35,9 +40,9 @@ function App() {
                   </TooltipTrigger>
                   <TooltipContent className="max-w-sm text-sm">
                     <p>
-                      This dashboard helps you audit, compare, and troubleshoot GitHub Actions workflows across
-                      your organization. Save a personal access token, select repositories, and explore workflow
-                      health insights below.
+                      This dashboard helps you manage multiple GitHub
+                      repositories in your organization. Save a personal access
+                      token, select repositories, and explore insights below.
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -75,7 +80,7 @@ function App() {
         </div>
       </footer>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

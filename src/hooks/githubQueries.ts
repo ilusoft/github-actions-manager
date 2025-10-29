@@ -7,6 +7,11 @@ import {
   type RepositoryBranchRequestOptions,
   type RepositoryBranchSummary,
 } from "@/lib/github/branches";
+import {
+  fetchRepositoryPullRequests,
+  type RepositoryPullRequestRequestOptions,
+  type RepositoryPullRequestSummary,
+} from "@/lib/github/pull-requests";
 
 interface GithubOrganization {
   login: string;
@@ -107,6 +112,35 @@ const sortRunsByUpdated = (runs: GithubWorkflowRun[]) =>
       const bTime = b.updated_at ? new Date(b.updated_at).valueOf() : 0;
       return bTime - aTime;
     });
+
+export const useRepositoryPullRequests = (
+  organization?: string,
+  repository?: string,
+  options?: RepositoryPullRequestRequestOptions
+): UseQueryResult<RepositoryPullRequestSummary[], GithubApiError> =>
+  useQuery({
+    queryKey: [
+      "github",
+      "org",
+      organization,
+      "repo",
+      repository,
+      "pulls",
+      options?.perPage ?? 10,
+      options?.state ?? "open",
+      options?.base ?? "",
+      options?.author ?? "",
+      options?.page ?? 1,
+    ],
+    enabled: Boolean(organization && repository),
+    queryFn: () =>
+      fetchRepositoryPullRequests(
+        organization as string,
+        repository as string,
+        options
+      ),
+    staleTime: 1000 * 60,
+  });
 
 export const fetchWorkflowRuns = async (
   organization: string,
