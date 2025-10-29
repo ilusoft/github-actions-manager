@@ -6,37 +6,8 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
-import {
-  useQueries,
-  useQueryClient,
-  type UseQueryResult,
-} from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-import {
-  fetchRepositoryWorkflows,
-  type RepositoryWorkflowSummary,
-} from "@/hooks/githubQueries";
-import { GithubApiError } from "@/lib/github/client";
-import { RefreshCwIcon } from "lucide-react";
 import { BulkBranchDialog } from "@/components/bulk-branch-dialog";
 import {
   BulkBranchDeleteDialog,
@@ -48,21 +19,29 @@ import {
   BulkWorkflowRunDialog,
   type BulkWorkflowOption,
 } from "@/components/bulk-workflow-run-dialog";
+import { WorkflowDetailsDialog } from "@/components/workflow-details-dialog";
+import { RepositoryDashboardToolbar } from "@/components/repository-dashboard-toolbar";
+import { RepositoryDashboardViewContent } from "@/components/repository-dashboard-view-content";
 import {
-  WorkflowDetailsDialog,
-  filterWorkflowByRunName,
-} from "@/components/workflow-details-dialog";
-import { RepositoryDeploymentGrid } from "@/components/repository-deployment-grid";
-import { RepositoryBranchTree } from "@/components/repository-branch-tree";
-import { RepositoryPullRequestTree } from "@/components/repository-pull-request-tree";
-
-const STATUS_CLASSES: Record<WorkflowStatus, string> = {
-  never_run: "bg-muted text-muted-foreground",
-  running: "bg-amber-500/20 text-amber-700 dark:text-amber-400",
-  success: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400",
-  failed: "bg-destructive/20 text-destructive",
-  unknown: "bg-muted text-muted-foreground",
-};
+  RepositoryDashboardBulkActionsFooter,
+  type RepositoryBulkAction,
+} from "@/components/repository-dashboard-bulk-actions-footer";
+import { RepositoryDashboardBranchFooter } from "@/components/repository-dashboard-branch-footer";
+import { WorkflowFiltersCard } from "@/components/workflow-filters-card";
+import { BranchSettingsCard } from "@/components/branch-settings-card";
+import { PullRequestFiltersCard } from "@/components/pull-request-filters-card";
+import {
+  type WorkflowFilters,
+  type RepositoryViewMode,
+  type BranchViewSettings,
+  type PullRequestViewSettings,
+} from "@/types/repository-dashboard";
+import {
+  useWorkflowDashboardData,
+} from "@/hooks/use-workflow-dashboard-data";
+import { type RepositoryWorkflowSummary } from "@/hooks/githubQueries";
+import { useBranchSelection } from "@/hooks/use-branch-selection";
+import { useRepositorySelection } from "@/hooks/use-repository-selection";
 
 const areArraysEqual = (left: string[], right: string[]) => {
   if (left === right) {
@@ -82,50 +61,17 @@ const areArraysEqual = (left: string[], right: string[]) => {
   return true;
 };
 
-type WorkflowStatus =
-  | "never_run"
-  | "running"
-  | "success"
-  | "failed"
-  | "unknown";
-
 type RepositoryWorkflowDashboardProps = {
   organization?: string;
   repositories: string[];
   onReorder?: (orderedRepositories: string[]) => void;
 };
 
-type WorkflowFilters = {
-  excludeNoRuns: boolean;
-  branch: string;
-  runName: string;
-  startDate?: string;
-  endDate?: string;
-};
-
-type RepositoryViewMode =
-  | "workflows"
-  | "deployments"
-  | "branches"
-  | "pullRequests";
-
-type BranchViewSettings = {
-  visibility: "all" | "protected" | "unprotected";
-  perPage: number;
-  limit: number;
-  name: string;
-};
-
-type PullRequestViewSettings = {
-  state: "open" | "closed" | "all";
-  perPage: number;
-  base: string;
-  author: string;
-};
-
 const DASHBOARD_VIEW_STORAGE_KEY = "repository-workflow-dashboard:view-mode";
 
-const isRepositoryViewMode = (value: string | null): value is RepositoryViewMode =>
+const isRepositoryViewMode = (
+  value: string | null
+): value is RepositoryViewMode =>
   value === "workflows" ||
   value === "deployments" ||
   value === "branches" ||
@@ -180,12 +126,19 @@ export function RepositoryWorkflowDashboard({
       base: "",
       author: "",
     }));
-  const [selectedRepositories, setSelectedRepositories] = useState<Set<string>>(
-    () => new Set()
-  );
-  const [selectedBranchesMap, setSelectedBranchesMap] = useState<
-    Map<string, Set<string>>
-  >(() => new Map());
+  const {
+    selectedRepositories,
+    selectedRepositoriesArray,
+    handleRepositorySelectionChange,
+  } = useRepositorySelection();
+  const {
+    selectedBranches: selectedBranchesMap,
+    selectedEntries: selectedBranchEntries,
+    selectedCount: selectedBranchCount,
+    handleBranchSelectionChange,
+    clearSelectedBranches,
+    ensureSelectionWithinRepositories,
+  } = useBranchSelection();
   const [isBulkBranchDialogOpen, setIsBulkBranchDialogOpen] = useState(false);
   const [isBulkBranchDeleteDialogOpen, setIsBulkBranchDeleteDialogOpen] =
     useState(false);
@@ -198,8 +151,9 @@ export function RepositoryWorkflowDashboard({
   const [bulkWorkflowError, setBulkWorkflowError] = useState<string | null>(
     null
   );
-  const [activeWorkflow, setActiveWorkflow] =
-    useState<RepositoryWorkflowSummary | null>(null);
+  const [activeWorkflow, setActiveWorkflow] = useState<
+    RepositoryWorkflowSummary | null
+  >(null);
   const handleWorkflowDialogChange = useCallback((open: boolean) => {
     if (!open) {
       setBulkWorkflowOptions([]);
@@ -232,95 +186,21 @@ export function RepositoryWorkflowDashboard({
   }, [viewMode]);
 
   const enabledRepositories = useMemo(() => order.filter(Boolean), [order]);
-  const serverFilterOptions = useMemo(
-    () => ({
-      branch: debouncedFilters.branch.trim() || undefined,
-      startDate: debouncedFilters.startDate,
-      endDate: debouncedFilters.endDate,
-      excludeNoRuns: debouncedFilters.excludeNoRuns,
-    }),
-    [
-      debouncedFilters.branch,
-      debouncedFilters.startDate,
-      debouncedFilters.endDate,
-      debouncedFilters.excludeNoRuns,
-    ]
-  );
   const runNameFilter = debouncedFilters.runName;
-  const selectedRepositoriesArray = useMemo(
-    () => Array.from(selectedRepositories),
-    [selectedRepositories]
-  );
-  const selectedBranchCount = useMemo(() => {
-    let count = 0;
-    selectedBranchesMap.forEach((branches) => {
-      count += branches.size;
-    });
-    return count;
-  }, [selectedBranchesMap]);
-  const selectedBranchEntries = useMemo<BranchDeletionTarget[]>(() => {
-    const entries: BranchDeletionTarget[] = [];
-    selectedBranchesMap.forEach((branches, repository) => {
-      branches.forEach((branch) => {
-        entries.push({ repository, branch });
-      });
-    });
-    return entries.sort((a, b) => {
-      if (a.repository === b.repository) {
-        return a.branch.localeCompare(b.branch);
-      }
-      return a.repository.localeCompare(b.repository);
-    });
-  }, [selectedBranchesMap]);
 
-  const workflowQueries = useQueries({
-    queries: enabledRepositories.map((repository) => ({
-      queryKey: [
-        "github",
-        "org",
-        organization,
-        "repo",
-        repository,
-        "workflows",
-        serverFilterOptions.branch ?? "",
-        serverFilterOptions.startDate ?? "",
-        serverFilterOptions.endDate ?? "",
-        serverFilterOptions.excludeNoRuns ?? false,
-      ],
-      enabled: Boolean(organization && viewMode === "workflows"),
-      queryFn: () => {
-        if (!organization) {
-          throw new GithubApiError("Missing organization", 400);
-        }
-
-        return fetchRepositoryWorkflows(
-          organization,
-          repository,
-          serverFilterOptions
-        );
-      },
-      staleTime: 1000 * 60 * 2,
-    })),
-  }) as UseQueryResult<RepositoryWorkflowSummary[], GithubApiError>[];
-
-  const isAnyWorkflowLoading = useMemo(
-    () => workflowQueries.some((query) => query.isLoading || query.isFetching),
-    [workflowQueries]
-  );
-
-  const workflowSummariesByRepo = useMemo(() => {
-    const result = new Map<string, RepositoryWorkflowSummary[]>();
-    enabledRepositories.forEach((repository, index) => {
-      const query = workflowQueries[index];
-      if (query?.data) {
-        result.set(repository, query.data);
-      }
-    });
-    return result;
-  }, [enabledRepositories, workflowQueries]);
+  const {
+    queries: workflowQueries,
+    isAnyLoading: isAnyWorkflowLoading,
+    summariesByRepository: workflowSummariesByRepo,
+  } = useWorkflowDashboardData({
+    organization,
+    repositories: enabledRepositories,
+    filters: debouncedFilters,
+    viewMode,
+  });
 
   const handleBulkActionSelect = useCallback(
-    (action: string) => {
+    (action: RepositoryBulkAction) => {
       if (selectedRepositories.size === 0) {
         return;
       }
@@ -467,65 +347,6 @@ export function RepositoryWorkflowDashboard({
     }
   }, [onReorder, order, repositories]);
 
-  const handleRepositorySelectionChange = useCallback(
-    (repository: string, checked: boolean) => {
-      setSelectedRepositories((previous) => {
-        const next = new Set(previous);
-        if (checked) {
-          next.add(repository);
-        } else {
-          next.delete(repository);
-        }
-        return next;
-      });
-    },
-    []
-  );
-
-  const handleBranchSelectionChange = useCallback(
-    (repository: string, branch: string, checked: boolean) => {
-      setSelectedBranchesMap((previous) => {
-        const current = previous.get(repository);
-        const hasBranch = current?.has(branch) ?? false;
-
-        if (checked) {
-          if (hasBranch) {
-            return previous;
-          }
-
-          const next = new Map(previous);
-          const nextSet = new Set(current ?? []);
-          nextSet.add(branch);
-          next.set(repository, nextSet);
-          return next;
-        }
-
-        if (!hasBranch) {
-          return previous;
-        }
-
-        const next = new Map(previous);
-        const nextSet = new Set(current);
-        nextSet.delete(branch);
-
-        if (nextSet.size > 0) {
-          next.set(repository, nextSet);
-        } else {
-          next.delete(repository);
-        }
-
-        return next;
-      });
-    },
-    []
-  );
-
-  const clearSelectedBranches = useCallback(() => {
-    setSelectedBranchesMap((previous) =>
-      previous.size === 0 ? previous : new Map()
-    );
-  }, []);
-
   const headerTitle =
     viewMode === "workflows"
       ? "Repository workflows"
@@ -570,68 +391,25 @@ export function RepositoryWorkflowDashboard({
       author: author || undefined,
     };
   }, [pullRequestSettings]);
-  const showWorkflowFilters = viewMode === "workflows";
-  const showBranchFilters = viewMode === "branches";
-  const showPullRequestFilters = viewMode === "pullRequests";
-
+  const pullRequestPerPage = pullRequestQueryOptions.perPage;
+  const pullRequestState = pullRequestQueryOptions.state;
+  const pullRequestBase = pullRequestQueryOptions.base ?? "";
+  const pullRequestAuthor = pullRequestQueryOptions.author ?? "";
   useEffect(() => {
     if (viewMode !== "branches") {
-      setSelectedBranchesMap((previous) =>
-        previous.size === 0 ? previous : new Map()
-      );
+      clearSelectedBranches();
     }
-  }, [viewMode]);
+  }, [viewMode, clearSelectedBranches]);
 
   useEffect(() => {
-    setSelectedBranchesMap((previous) => {
-      if (previous.size === 0) {
-        return previous;
-      }
-
-      const allowed = new Set(enabledRepositories);
-      let changed = false;
-      const next = new Map<string, Set<string>>();
-
-      previous.forEach((branches, repository) => {
-        if (!allowed.has(repository)) {
-          changed = true;
-          return;
-        }
-
-        next.set(repository, branches);
-      });
-
-      return changed ? next : previous;
-    });
-  }, [enabledRepositories]);
+    ensureSelectionWithinRepositories(enabledRepositories);
+  }, [enabledRepositories, ensureSelectionWithinRepositories]);
 
   const handleBranchDeleteResult = useCallback(
     (result: BulkBranchDeleteResult) => {
       if (result.deleted.length > 0) {
-        setSelectedBranchesMap((previous) => {
-          const next = new Map(previous);
-          let changed = false;
-
-          result.deleted.forEach(
-            ({ repository, branch }: BranchDeletionTarget) => {
-              const current = next.get(repository);
-              if (!current?.has(branch)) {
-                return;
-              }
-
-              changed = true;
-              const nextSet = new Set(current);
-              nextSet.delete(branch);
-
-              if (nextSet.size > 0) {
-                next.set(repository, nextSet);
-              } else {
-                next.delete(repository);
-              }
-            }
-          );
-
-          return changed ? next : previous;
+        result.deleted.forEach(({ repository, branch }) => {
+          handleBranchSelectionChange(repository, branch, false);
         });
 
         if (organization) {
@@ -694,6 +472,85 @@ export function RepositoryWorkflowDashboard({
     },
     [clampPageSize]
   );
+
+  const handleRefresh = useCallback(() => {
+    if (!organization) {
+      return;
+    }
+
+    const refreshForRepository = (repo: string) => {
+      switch (viewMode) {
+        case "workflows":
+          queryClient.invalidateQueries({
+            queryKey: [
+              "github",
+              "org",
+              organization,
+              "repo",
+              repo,
+              "workflows",
+            ],
+          });
+          break;
+        case "deployments":
+          queryClient.invalidateQueries({
+            queryKey: [
+              "github",
+              "org",
+              organization,
+              "repo",
+              repo,
+              "deployments",
+              "environments",
+            ],
+          });
+          break;
+        case "branches":
+          queryClient.invalidateQueries({
+            queryKey: [
+              "github",
+              "org",
+              organization,
+              "repo",
+              repo,
+              "branches",
+            ],
+          });
+          break;
+        case "pullRequests":
+          queryClient.invalidateQueries({
+            queryKey: [
+              "github",
+              "org",
+              organization,
+              "repo",
+              repo,
+              "pulls",
+              pullRequestPerPage,
+              pullRequestState,
+              pullRequestBase,
+              pullRequestAuthor,
+              1,
+            ],
+          });
+          break;
+        default:
+          break;
+      }
+    };
+
+    enabledRepositories.forEach(refreshForRepository);
+    setLastRefreshedAt(new Date());
+  }, [
+    organization,
+    enabledRepositories,
+    viewMode,
+    queryClient,
+    pullRequestPerPage,
+    pullRequestState,
+    pullRequestBase,
+    pullRequestAuthor,
+  ]);
 
   if (!organization || enabledRepositories.length === 0) {
     return null;
@@ -758,656 +615,66 @@ export function RepositoryWorkflowDashboard({
             <h3 className="text-lg font-semibold">{headerTitle}</h3>
             <p className="text-sm text-muted-foreground">{headerDescription}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-1">
-              <Button
-                type="button"
-                size="sm"
-                variant={viewMode === "workflows" ? "default" : "ghost"}
-                onClick={() => setViewMode("workflows")}
-              >
-                Workflows
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={viewMode === "deployments" ? "default" : "ghost"}
-                onClick={() => setViewMode("deployments")}
-              >
-                Deployments
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={viewMode === "branches" ? "default" : "ghost"}
-                onClick={() => setViewMode("branches")}
-              >
-                Branches
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={viewMode === "pullRequests" ? "default" : "ghost"}
-                onClick={() => setViewMode("pullRequests")}
-              >
-                Pull Requests
-              </Button>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              Last refreshed: {lastRefreshedLabel}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                if (!organization) {
-                  return;
-                }
-
-                const invalidateForRepository = (repo: string) => {
-                  switch (viewMode) {
-                    case "workflows":
-                      queryClient.invalidateQueries({
-                        queryKey: [
-                          "github",
-                          "org",
-                          organization,
-                          "repo",
-                          repo,
-                          "workflows",
-                        ],
-                      });
-                      break;
-                    case "deployments":
-                      queryClient.invalidateQueries({
-                        queryKey: [
-                          "github",
-                          "org",
-                          organization,
-                          "repo",
-                          repo,
-                          "deployments",
-                          "environments",
-                        ],
-                      });
-                      break;
-                    case "branches":
-                      queryClient.invalidateQueries({
-                        queryKey: [
-                          "github",
-                          "org",
-                          organization,
-                          "repo",
-                          repo,
-                          "branches",
-                        ],
-                      });
-                      break;
-                    case "pullRequests":
-                      queryClient.invalidateQueries({
-                        queryKey: [
-                          "github",
-                          "org",
-                          organization,
-                          "repo",
-                          repo,
-                          "pulls",
-                          pullRequestQueryOptions.perPage,
-                          pullRequestQueryOptions.state,
-                          pullRequestQueryOptions.base ?? "",
-                          pullRequestQueryOptions.author ?? "",
-                          1,
-                        ],
-                      });
-                      break;
-                    default:
-                      break;
-                  }
-                };
-
-                enabledRepositories.forEach(invalidateForRepository);
-
-                setLastRefreshedAt(new Date());
-              }}
-              aria-label="Refresh view data"
-            >
-              <RefreshCwIcon className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </div>
+          <RepositoryDashboardToolbar
+            viewMode={viewMode}
+            lastRefreshedLabel={lastRefreshedLabel}
+            onViewModeChange={setViewMode}
+            onRefresh={handleRefresh}
+            refreshAriaLabel="Refresh view data"
+          />
         </div>
-        {showWorkflowFilters ? (
-          <Card className="border-dashed">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Filters</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="filter-exclude-no-runs"
-                  checked={filters.excludeNoRuns}
-                  onCheckedChange={(checked) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      excludeNoRuns: Boolean(checked),
-                    }))
-                  }
-                />
-                <Label htmlFor="filter-exclude-no-runs" className="text-sm">
-                  Hide workflows with no runs
-                </Label>
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="filter-branch"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Branch
-                </Label>
-                <Input
-                  id="filter-branch"
-                  placeholder="e.g. main"
-                  value={filters.branch}
-                  onChange={(event) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      branch: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="filter-run-name"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Run name contains
-                </Label>
-                <Input
-                  id="filter-run-name"
-                  placeholder="e.g. deploy"
-                  value={filters.runName}
-                  onChange={(event) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      runName: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="filter-start-date"
-                    className="text-xs uppercase text-muted-foreground"
-                  >
-                    Start date
-                  </Label>
-                  <Input
-                    id="filter-start-date"
-                    type="datetime-local"
-                    value={filters.startDate ?? ""}
-                    onChange={(event) =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        startDate: event.target.value || undefined,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="filter-end-date"
-                    className="text-xs uppercase text-muted-foreground"
-                  >
-                    End date
-                  </Label>
-                  <Input
-                    id="filter-end-date"
-                    type="datetime-local"
-                    value={filters.endDate ?? ""}
-                    onChange={(event) =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        endDate: event.target.value || undefined,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
-        {showBranchFilters ? (
-          <Card className="border-dashed">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Branch settings</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-1">
-                <Label
-                  htmlFor="branch-visibility"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Visibility
-                </Label>
-                <Select
-                  value={branchSettings.visibility}
-                  onValueChange={(value: "all" | "protected" | "unprotected") =>
-                    setBranchSettings((previous) => ({
-                      ...previous,
-                      visibility: value,
-                    }))
-                  }
-                >
-                  <SelectTrigger id="branch-visibility">
-                    <SelectValue placeholder="Select visibility" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All branches</SelectItem>
-                    <SelectItem value="protected">Protected only</SelectItem>
-                    <SelectItem value="unprotected">
-                      Unprotected only
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="branch-per-page"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Branches per request
-                </Label>
-                <Input
-                  id="branch-per-page"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={branchSettings.perPage}
-                  onChange={handleBranchNumericChange("perPage")}
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Controls the GitHub API page size (max 100).
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="branch-limit"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Maximum branches displayed
-                </Label>
-                <Input
-                  id="branch-limit"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={branchSettings.limit}
-                  onChange={handleBranchNumericChange("limit")}
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Caps the number of branches shown per repository.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="branch-name-filter"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Branch name contains
-                </Label>
-                <Input
-                  id="branch-name-filter"
-                  placeholder="e.g. release"
-                  value={branchSettings.name}
-                  onChange={(event) =>
-                    setBranchSettings((previous) => ({
-                      ...previous,
-                      name: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
-        {showPullRequestFilters ? (
-          <Card className="border-dashed">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Pull request filters</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-1">
-                <Label
-                  htmlFor="pull-request-state"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  State
-                </Label>
-                <Select
-                  value={pullRequestSettings.state}
-                  onValueChange={(value: "open" | "closed" | "all") =>
-                    setPullRequestSettings((previous) => ({
-                      ...previous,
-                      state: value,
-                    }))
-                  }
-                >
-                  <SelectTrigger id="pull-request-state">
-                    <SelectValue placeholder="Select state" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="open">Open</SelectItem>
-                    <SelectItem value="closed">Closed</SelectItem>
-                    <SelectItem value="all">All</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="pull-request-base"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Base branch
-                </Label>
-                <Input
-                  id="pull-request-base"
-                  placeholder="e.g. main"
-                  value={pullRequestSettings.base}
-                  onChange={(event) =>
-                    setPullRequestSettings((previous) => ({
-                      ...previous,
-                      base: event.target.value,
-                    }))
-                  }
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Filters pull requests targeting the specified base branch.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="pull-request-author"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Author login contains
-                </Label>
-                <Input
-                  id="pull-request-author"
-                  placeholder="e.g. octocat"
-                  value={pullRequestSettings.author}
-                  onChange={(event) =>
-                    setPullRequestSettings((previous) => ({
-                      ...previous,
-                      author: event.target.value,
-                    }))
-                  }
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Matches GitHub usernames (case-insensitive, partial match).
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label
-                  htmlFor="pull-request-per-page"
-                  className="text-xs uppercase text-muted-foreground"
-                >
-                  Pull requests per request
-                </Label>
-                <Input
-                  id="pull-request-per-page"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={pullRequestSettings.perPage}
-                  onChange={handlePullRequestPerPageChange}
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Controls the GitHub API page size (max 100).
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
         {viewMode === "workflows" ? (
-          <div className="grid w-full gap-6 grid-cols-[repeat(auto-fit,minmax(250px,1fr))]">
-            {enabledRepositories.map((repository, index) => {
-              const query = workflowQueries[index];
-
-              return (
-                <Card
-                  key={repository}
-                  className={cn(
-                    "flex h-full cursor-grab flex-col select-none transition-opacity",
-                    dragging === repository ? "opacity-80" : ""
-                  )}
-                  draggable={enabledRepositories.length > 1}
-                  onDragStart={handleDragStart(repository)}
-                  onDragEnter={handleDragEnter(repository)}
-                  onDragOver={handleDragOver}
-                  onDragEnd={handleDragEnd}
-                >
-                  <CardHeader className="flex flex-row items-start justify-between gap-3">
-                    <CardTitle className="truncate" title={repository}>
-                      <a
-                        href={`https://github.com/${organization}/${repository}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        {repository}
-                      </a>
-                    </CardTitle>
-                    <Checkbox
-                      checked={selectedRepositories.has(repository)}
-                      onCheckedChange={(checked) =>
-                        handleRepositorySelectionChange(
-                          repository,
-                          checked === true
-                        )
-                      }
-                      aria-label={`Select repository ${repository}`}
-                    />
-                  </CardHeader>
-                  <CardContent className="flex-1">
-                    {renderQueryState(
-                      query,
-                      repository,
-                      runNameFilter,
-                      (workflow) => setActiveWorkflow(workflow)
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        ) : viewMode === "deployments" ? (
-          <RepositoryDeploymentGrid
-            organization={organization}
-            repositories={enabledRepositories}
-            selectedRepositories={selectedRepositories}
-            onRepositorySelectionChange={handleRepositorySelectionChange}
+          <WorkflowFiltersCard filters={filters} onChange={setFilters} />
+        ) : null}
+        {viewMode === "branches" ? (
+          <BranchSettingsCard
+            settings={branchSettings}
+            onChange={setBranchSettings}
+            onNumericChange={handleBranchNumericChange}
           />
-        ) : viewMode === "branches" ? (
-          <RepositoryBranchTree
-            organization={organization}
-            repositories={enabledRepositories}
-            branchOptions={branchQueryOptions}
-            nameFilter={branchNameFilter}
-            selectedBranches={selectedBranchesMap}
-            onBranchSelectionChange={handleBranchSelectionChange}
+        ) : null}
+        {viewMode === "pullRequests" ? (
+          <PullRequestFiltersCard
+            settings={pullRequestSettings}
+            onChange={setPullRequestSettings}
+            onPerPageChange={handlePullRequestPerPageChange}
           />
-        ) : (
-          <RepositoryPullRequestTree
-            organization={organization}
-            repositories={enabledRepositories}
-            options={pullRequestQueryOptions}
-          />
-        )}
+        ) : null}
+        <RepositoryDashboardViewContent
+          viewMode={viewMode}
+          organization={organization}
+          repositories={enabledRepositories}
+          workflowQueries={workflowQueries}
+          runNameFilter={runNameFilter}
+          draggingRepository={dragging}
+          onDragStart={handleDragStart}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          selectedRepositories={selectedRepositories}
+          onRepositorySelectionChange={handleRepositorySelectionChange}
+          branchOptions={branchQueryOptions}
+          branchNameFilter={branchNameFilter}
+          selectedBranches={selectedBranchesMap}
+          onBranchSelectionChange={handleBranchSelectionChange}
+          pullRequestOptions={pullRequestQueryOptions}
+          onWorkflowSelect={setActiveWorkflow}
+        />
       </div>
-      {viewMode !== "branches" && selectedRepositories.size > 0 ? (
-        <div className="fixed inset-x-0 bottom-4 z-40 px-4">
-          <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75">
-            <div className="text-sm text-muted-foreground">
-              {selectedRepositories.size} repositories selected
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="secondary">
-                  Bulk actions
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    handleBulkActionSelect("create-branch");
-                  }}
-                >
-                  Create branch
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    handleBulkActionSelect("create-pr");
-                  }}
-                >
-                  Create pull request
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    handleBulkActionSelect("run-workflow");
-                  }}
-                >
-                  Run workflow
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+      {viewMode !== "branches" ? (
+        <RepositoryDashboardBulkActionsFooter
+          count={selectedRepositories.size}
+          onSelectAction={handleBulkActionSelect}
+        />
       ) : null}
-      {viewMode === "branches" && selectedBranchCount > 0 ? (
-        <div className="fixed inset-x-0 bottom-4 z-40 px-4">
-          <div className="mx-auto flex max-w-4xl flex-col gap-3 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-muted-foreground">
-              {selectedBranchCount} branch
-              {selectedBranchCount === 1 ? "" : "es"} selected
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={clearSelectedBranches}
-              >
-                Clear selection
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => setIsBulkBranchDeleteDialogOpen(true)}
-              >
-                Delete branches
-              </Button>
-            </div>
-          </div>
-        </div>
+      {viewMode === "branches" ? (
+        <RepositoryDashboardBranchFooter
+          count={selectedBranchCount}
+          onClearSelection={clearSelectedBranches}
+          onDeleteSelected={() => setIsBulkBranchDeleteDialogOpen(true)}
+        />
       ) : null}
     </>
   );
 }
 
-const renderQueryState = (
-  query: UseQueryResult<RepositoryWorkflowSummary[], GithubApiError>,
-  repository: string,
-  runNameFilter: string,
-  onSelectWorkflow: (workflow: RepositoryWorkflowSummary) => void
-) => {
-  if (query.isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading workflows…</p>;
-  }
-
-  if (query.isError) {
-    return (
-      <p className="text-sm text-destructive">
-        Unable to load workflows for {repository}. Try again later.
-      </p>
-    );
-  }
-
-  const workflows = (query.data ?? [])
-    .map((workflow) => filterWorkflowByRunName(workflow, runNameFilter))
-    .filter(
-      (workflow): workflow is RepositoryWorkflowSummary => workflow !== null
-    );
-
-  if (workflows.length === 0) {
-    return <p className="text-sm text-muted-foreground">No workflows found.</p>;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {workflows.map((workflow: RepositoryWorkflowSummary) => (
-        <WorkflowPill
-          key={workflow.id}
-          workflow={workflow}
-          onSelect={onSelectWorkflow}
-        />
-      ))}
-    </div>
-  );
-};
-
-type WorkflowPillProps = {
-  workflow: RepositoryWorkflowSummary;
-  onSelect: (workflow: RepositoryWorkflowSummary) => void;
-};
-
-function WorkflowPill({ workflow, onSelect }: WorkflowPillProps) {
-  const status = getWorkflowStatus(workflow);
-
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(workflow)}
-      className={cn(
-        "inline-flex max-w-full truncate rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-90",
-        STATUS_CLASSES[status]
-      )}
-    >
-      <span className="truncate">{workflow.name}</span>
-    </button>
-  );
-}
-
-const getWorkflowStatus = (
-  workflow: RepositoryWorkflowSummary
-): WorkflowStatus => {
-  const latestRun = workflow.latestRun;
-
-  if (!latestRun) {
-    return "never_run";
-  }
-
-  const status = latestRun.status?.toLowerCase();
-  const conclusion = latestRun.conclusion?.toLowerCase() ?? "";
-
-  if (status === "in_progress" || status === "queued" || status === "waiting") {
-    return "running";
-  }
-
-  if (conclusion === "success") {
-    return "success";
-  }
-
-  if (
-    ["failure", "timed_out", "cancelled", "action_required"].includes(
-      conclusion
-    )
-  ) {
-    return "failed";
-  }
-
-  return "unknown";
-};
