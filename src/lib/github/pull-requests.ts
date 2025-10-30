@@ -8,6 +8,7 @@ interface GithubPullRequestUser {
 
 interface GithubPullRequestBranchRef {
   ref?: string;
+  sha?: string;
 }
 
 interface GithubPullRequest {
@@ -43,6 +44,7 @@ export interface RepositoryPullRequestSummary {
   draft: boolean;
   baseBranch?: string;
   headBranch?: string;
+  headSha?: string;
   author?: string;
   description?: string;
 }
@@ -111,6 +113,7 @@ export const fetchRepositoryPullRequests = async (
         draft,
         baseBranch: pull.base?.ref,
         headBranch: pull.head?.ref,
+        headSha: pull.head?.sha,
         author: pull.user?.login,
         description: normalizeBody(pull.body),
       } satisfies RepositoryPullRequestSummary;

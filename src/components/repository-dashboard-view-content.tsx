@@ -13,6 +13,7 @@ import type { RepositoryBranchRequestOptions } from "@/lib/github/branches";
 import type { RepositoryPullRequestRequestOptions } from "@/lib/github/pull-requests";
 import type { RepositoryWorkflowSummary } from "@/hooks/githubQueries";
 import type { RepositoryViewMode } from "@/types/repository-dashboard";
+import type { PullRequestSelectionEntry } from "@/hooks/use-pull-request-selection";
 
 const STATUS_CLASSES: Record<WorkflowStatus, string> = {
   never_run: "bg-muted text-muted-foreground",
@@ -55,6 +56,12 @@ interface RepositoryDashboardViewContentProps {
   ) => void;
   pullRequestOptions: RepositoryPullRequestRequestOptions;
   onWorkflowSelect: (workflow: RepositoryWorkflowSummary) => void;
+  selectedPullRequestIds?: ReadonlyMap<string, Set<number>>;
+  onPullRequestSelectionChange?: (
+    repository: string,
+    pullRequest: PullRequestSelectionEntry,
+    checked: boolean
+  ) => void;
 }
 
 const RepositoryDashboardViewContentComponent = ({
@@ -76,6 +83,8 @@ const RepositoryDashboardViewContentComponent = ({
   onBranchSelectionChange,
   pullRequestOptions,
   onWorkflowSelect,
+  selectedPullRequestIds,
+  onPullRequestSelectionChange,
 }: RepositoryDashboardViewContentProps) => {
   if (viewMode === "deployments") {
     return (
@@ -107,6 +116,8 @@ const RepositoryDashboardViewContentComponent = ({
         organization={organization}
         repositories={repositories}
         options={pullRequestOptions}
+        selectedPullRequestIds={selectedPullRequestIds}
+        onPullRequestSelectionChange={onPullRequestSelectionChange}
       />
     );
   }

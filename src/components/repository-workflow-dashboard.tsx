@@ -27,6 +27,7 @@ import {
   type RepositoryBulkAction,
 } from "@/components/repository-dashboard-bulk-actions-footer";
 import { RepositoryDashboardBranchFooter } from "@/components/repository-dashboard-branch-footer";
+import { RepositoryDashboardPullRequestFooter } from "@/components/repository-dashboard-pull-request-footer";
 import { WorkflowFiltersCard } from "@/components/workflow-filters-card";
 import { BranchSettingsCard } from "@/components/branch-settings-card";
 import { PullRequestFiltersCard } from "@/components/pull-request-filters-card";
@@ -42,6 +43,8 @@ import {
 import { type RepositoryWorkflowSummary } from "@/hooks/githubQueries";
 import { useBranchSelection } from "@/hooks/use-branch-selection";
 import { useRepositorySelection } from "@/hooks/use-repository-selection";
+import { usePullRequestSelection } from "@/hooks/use-pull-request-selection";
+import { BulkPullRequestMergeDialog } from "@/components/bulk-pull-request-merge-dialog";
 
 const areArraysEqual = (left: string[], right: string[]) => {
   if (left === right) {
@@ -139,11 +142,21 @@ export function RepositoryWorkflowDashboard({
     clearSelectedBranches,
     ensureSelectionWithinRepositories,
   } = useBranchSelection();
+  const {
+    selectedEntries: selectedPullRequestEntries,
+    selectedCount: selectedPullRequestCount,
+    selectedIdsByRepository: selectedPullRequestIds,
+    handlePullRequestSelectionChange,
+    clearSelectedPullRequests,
+    ensureSelectionWithinRepositories: ensurePullRequestSelectionWithinRepositories,
+  } = usePullRequestSelection();
   const [isBulkBranchDialogOpen, setIsBulkBranchDialogOpen] = useState(false);
   const [isBulkBranchDeleteDialogOpen, setIsBulkBranchDeleteDialogOpen] =
     useState(false);
   const [isBulkPrDialogOpen, setIsBulkPrDialogOpen] = useState(false);
   const [isBulkWorkflowDialogOpen, setIsBulkWorkflowDialogOpen] =
+    useState(false);
+  const [isBulkPrMergeDialogOpen, setIsBulkPrMergeDialogOpen] =
     useState(false);
   const [bulkWorkflowOptions, setBulkWorkflowOptions] = useState<
     BulkWorkflowOption[]
@@ -402,41 +415,53 @@ export function RepositoryWorkflowDashboard({
   }, [viewMode, clearSelectedBranches]);
 
   useEffect(() => {
+    if (viewMode !== "pullRequests") {
+      clearSelectedPullRequests();
+      setIsBulkPrMergeDialogOpen(false);
+    }
+  }, [viewMode, clearSelectedPullRequests]);
+
+  useEffect(() => {
     ensureSelectionWithinRepositories(enabledRepositories);
-  }, [enabledRepositories, ensureSelectionWithinRepositories]);
+    ensurePullRequestSelectionWithinRepositories(enabledRepositories);
+  }, [
+    enabledRepositories,
+    ensureSelectionWithinRepositories,
+    ensurePullRequestSelectionWithinRepositories,
+  ]);
 
   const handleBranchDeleteResult = useCallback(
     (result: BulkBranchDeleteResult) => {
-      if (result.deleted.length > 0) {
-        result.deleted.forEach(({ repository, branch }) => {
-          handleBranchSelectionChange(repository, branch, false);
-        });
-
-        if (organization) {
-          const reposToRefresh = Array.from(
-            new Set(
-              result.deleted.map(
-                (entry: BranchDeletionTarget) => entry.repository
-              )
-            )
-          );
-
-          reposToRefresh.forEach((repo) => {
-            queryClient.invalidateQueries({
-              queryKey: [
-                "github",
-                "org",
-                organization,
-                "repo",
-                repo,
-                "branches",
-              ],
-            });
-          });
-        }
+      if (result.deleted.length === 0) {
+        return;
       }
+
+      result.deleted.forEach(({ repository, branch }) => {
+        handleBranchSelectionChange(repository, branch, false);
+      });
+
+      if (!organization) {
+        return;
+      }
+
+      const reposToRefresh = new Set(
+        result.deleted.map((entry: BranchDeletionTarget) => entry.repository)
+      );
+
+      reposToRefresh.forEach((repo) => {
+        queryClient.invalidateQueries({
+          queryKey: [
+            "github",
+            "org",
+            organization,
+            "repo",
+            repo,
+            "branches",
+          ],
+        });
+      });
     },
-    [organization, queryClient]
+    [organization, queryClient, handleBranchSelectionChange]
   );
 
   const clampPageSize = useCallback((value: number) => {
@@ -552,55 +577,89 @@ export function RepositoryWorkflowDashboard({
     pullRequestAuthor,
   ]);
 
+  const handlePullRequestMergeCompleted = useCallback(() => {
+    if (!organization) {
+      return;
+    }
+
+    const repositoriesToRefresh = new Set(
+      selectedPullRequestEntries.map((entry) => entry.repository)
+    );
+
+    repositoriesToRefresh.forEach((repo) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "github",
+          "org",
+          organization,
+          "repo",
+          repo,
+          "pulls",
+          pullRequestPerPage,
+          pullRequestState,
+          pullRequestBase,
+          pullRequestAuthor,
+          1,
+        ],
+      });
+    });
+
+    clearSelectedPullRequests();
+    setIsBulkPrMergeDialogOpen(false);
+  }, [
+    organization,
+    pullRequestAuthor,
+    pullRequestBase,
+    pullRequestPerPage,
+    pullRequestState,
+    queryClient,
+    selectedPullRequestEntries,
+    clearSelectedPullRequests,
+  ]);
+
   if (!organization || enabledRepositories.length === 0) {
     return null;
   }
 
   return (
     <>
+      <BulkPullRequestMergeDialog
+        organization={organization ?? ""}
+        pullRequests={selectedPullRequestEntries}
+        open={isBulkPrMergeDialogOpen}
+        onOpenChange={setIsBulkPrMergeDialogOpen}
+        onCompleted={handlePullRequestMergeCompleted}
+      />
       <WorkflowDetailsDialog
         workflow={activeWorkflow}
         runNameFilter={runNameFilter}
         onOpenChange={(open) => {
-          if (!open) setActiveWorkflow(null);
+          if (!open) {
+            setActiveWorkflow(null);
+          }
         }}
       />
       <BulkBranchDialog
         organization={organization}
         repositories={selectedRepositoriesArray}
         open={isBulkBranchDialogOpen}
-        onOpenChange={(open) => setIsBulkBranchDialogOpen(open)}
+        onOpenChange={setIsBulkBranchDialogOpen}
       />
       <BulkBranchDeleteDialog
         organization={organization}
         branches={selectedBranchEntries}
         open={isBulkBranchDeleteDialogOpen}
-        onOpenChange={(open: boolean) => {
-          if (!open && selectedBranchCount === 0) {
-            setIsBulkBranchDeleteDialogOpen(false);
-            return;
-          }
-
-          if (!open && isBulkBranchDeleteDialogOpen) {
-            setIsBulkBranchDeleteDialogOpen(false);
-            return;
-          }
-
-          setIsBulkBranchDeleteDialogOpen(open);
-        }}
-        onCompleted={(result: BulkBranchDeleteResult) => {
-          handleBranchDeleteResult(result);
-          setIsBulkBranchDeleteDialogOpen(false);
-        }}
+        onOpenChange={setIsBulkBranchDeleteDialogOpen}
+        onCompleted={handleBranchDeleteResult}
       />
       <BulkPrDialog
         organization={organization}
         repositories={selectedRepositoriesArray}
         open={isBulkPrDialogOpen}
-        onOpenChange={(open) => setIsBulkPrDialogOpen(open)}
+        onOpenChange={setIsBulkPrDialogOpen}
       />
       <BulkWorkflowRunDialog
-        organization={organization}
+        organization={organization ?? ""}
         repositories={selectedRepositoriesArray}
         workflows={bulkWorkflowOptions}
         open={isBulkWorkflowDialogOpen}
@@ -659,9 +718,11 @@ export function RepositoryWorkflowDashboard({
           onBranchSelectionChange={handleBranchSelectionChange}
           pullRequestOptions={pullRequestQueryOptions}
           onWorkflowSelect={setActiveWorkflow}
+          selectedPullRequestIds={selectedPullRequestIds}
+          onPullRequestSelectionChange={handlePullRequestSelectionChange}
         />
       </div>
-      {viewMode !== "branches" ? (
+      {viewMode !== "branches" && viewMode !== "pullRequests" ? (
         <RepositoryDashboardBulkActionsFooter
           count={selectedRepositories.size}
           onSelectAction={handleBulkActionSelect}
@@ -674,7 +735,19 @@ export function RepositoryWorkflowDashboard({
           onDeleteSelected={() => setIsBulkBranchDeleteDialogOpen(true)}
         />
       ) : null}
+      {viewMode === "pullRequests" ? (
+        <RepositoryDashboardPullRequestFooter
+          count={selectedPullRequestCount}
+          onMergeClick={() => setIsBulkPrMergeDialogOpen(true)}
+          disabled={!organization || selectedPullRequestCount === 0}
+        />
+      ) : null}
+      <BulkBranchDialog
+        organization={organization ?? ""}
+        repositories={selectedRepositoriesArray}
+        open={isBulkBranchDialogOpen}
+        onOpenChange={setIsBulkBranchDialogOpen}
+      />
     </>
   );
 }
-
