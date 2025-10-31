@@ -19,14 +19,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   dispatchWorkflow,
   fetchWorkflowInputs,
@@ -37,7 +38,6 @@ import { ExternalLink } from "lucide-react";
 import {
   fetchWorkflowRuns,
   type GithubWorkflowRun,
-  type RepositoryWorkflowSummary,
 } from "@/hooks/githubQueries";
 
 export interface BulkWorkflowRepositoryEntry {
@@ -47,63 +47,39 @@ export interface BulkWorkflowRepositoryEntry {
   workflowHtmlUrl: string;
 }
 
-const areInputDefinitionsEqual = (
-  left: WorkflowDispatchInputDefinition[],
-  right: WorkflowDispatchInputDefinition[]
-): boolean => {
-  if (left.length !== right.length) {
-    return false;
-  }
+interface SelectedWorkflowEntry extends BulkWorkflowRepositoryEntry {
+  workflowName: string;
+  key: string;
+}
 
-  const normalize = (definition: WorkflowDispatchInputDefinition) => ({
-    id: definition.id,
-    type: definition.type ?? "string",
-    required: Boolean(definition.required),
-    defaultValue: definition.defaultValue ?? "",
-    options: [...(definition.options ?? [])].sort(),
-  });
+interface AggregatedInputDefinition
+  extends Omit<WorkflowDispatchInputDefinition, 'required'> {
+  id: string;
+  label: string;
+  description?: string;
+  required: boolean;
+  type: "string" | "choice" | "boolean" | "environment" | "number";
+  options?: string[];
+  defaultValue?: string;
+  requiredBy: string[];
+  workflows: string[];
+  repositories: string[];
+}
 
-  const leftMap = new Map(
-    left.map((definition) => [definition.id, normalize(definition)])
-  );
-  const rightMap = new Map(
-    right.map((definition) => [definition.id, normalize(definition)])
-  );
+type WorkflowInputCache = Record<string, WorkflowDispatchInputDefinition[]>;
 
-  if (leftMap.size !== rightMap.size) {
-    return false;
-  }
+const buildWorkflowKey = (repository: string, workflowId: number) =>
+  `${repository}::${workflowId}`;
 
-  for (const [id, leftDefinition] of leftMap.entries()) {
-    const rightDefinition = rightMap.get(id);
-    if (!rightDefinition) {
-      return false;
-    }
+const buildInputCacheKey = (
+  repository: string,
+  workflowId: number,
+  workflowPath: string
+) => `${repository}::${workflowId}::${workflowPath}`;
 
-    if (leftDefinition.type !== rightDefinition.type) {
-      return false;
-    }
-
-    if (leftDefinition.required !== rightDefinition.required) {
-      return false;
-    }
-
-    if (leftDefinition.defaultValue !== rightDefinition.defaultValue) {
-      return false;
-    }
-
-    if (leftDefinition.options.length !== rightDefinition.options.length) {
-      return false;
-    }
-
-    for (let index = 0; index < leftDefinition.options.length; index += 1) {
-      if (leftDefinition.options[index] !== rightDefinition.options[index]) {
-        return false;
-      }
-    }
-  }
-
-  return true;
+const extractWorkflowName = (fullName: string): string => {
+  const parts = fullName.split(' - ');
+  return parts.length > 1 ? parts.slice(1).join(' - ') : fullName;
 };
 
 const waitForRunUrl = async (
@@ -190,8 +166,7 @@ interface BulkWorkflowRunDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isLoadingWorkflows: boolean;
-  loadError?: string;
-  repositoryWorkflows: Record<string, RepositoryWorkflowSummary[]>;
+  loadError?: string | null;
 }
 
 type RepositoryActionStatus =
@@ -202,7 +177,9 @@ type RepositoryActionStatus =
   | "cancelled";
 
 interface RepositoryStatus {
-  name: string;
+  key: string;
+  repository: string;
+  workflowName: string;
   status: RepositoryActionStatus;
   message?: string;
   runUrl?: string;
@@ -227,154 +204,253 @@ export function BulkWorkflowRunDialog({
   onOpenChange,
   isLoadingWorkflows,
   loadError,
-  repositoryWorkflows,
 }: BulkWorkflowRunDialogProps) {
   const [sourceBranch, setSourceBranch] = useState("");
-  const [selectedWorkflowName, setSelectedWorkflowName] = useState<
-    string | null
-  >(null);
+  const [selectedWorkflowNames, setSelectedWorkflowNames] = useState<string[]>([]);
   const [inputDefinitions, setInputDefinitions] = useState<
-    WorkflowDispatchInputDefinition[]
+    AggregatedInputDefinition[]
   >([]);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [workflowInputCache, setWorkflowInputCache] = useState<WorkflowInputCache>({});
+  const workflowInputCacheRef = useRef<WorkflowInputCache>({});
   const [isFetchingInputs, setIsFetchingInputs] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const [runSilently, setRunSilently] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const patternAbortControllerRef = useRef<AbortController | null>(null);
-  const [pattern, setPattern] = useState("");
-  const [patternOption, setPatternOption] = useState<BulkWorkflowOption | null>(
-    null
-  );
-  const [patternError, setPatternError] = useState<string | null>(null);
-  const [isMatchingPattern, setIsMatchingPattern] = useState(false);
+  const inputAbortControllerRef = useRef<AbortController | null>(null);
   const [hasDispatchedRuns, setHasDispatchedRuns] = useState(false);
 
-  const initialStatuses = useMemo<RepositoryStatus[]>(
-    () => repositories.map((name) => ({ name, status: "idle" })),
-    [repositories]
-  );
-  const [statuses, setStatuses] = useState<RepositoryStatus[]>(initialStatuses);
+  const [statuses, setStatuses] = useState<RepositoryStatus[]>([]);
 
-  const availableWorkflows = useMemo(() => {
-    if (!patternOption) {
-      return workflows;
+  const selectedWorkflows = useMemo<SelectedWorkflowEntry[]>(() => {
+    if (selectedWorkflowNames.length === 0 || workflows.length === 0) {
+      return [];
     }
 
-    const withoutDuplicate = workflows.filter(
-      (option) => option.name !== patternOption.name
-    );
+    const entries: SelectedWorkflowEntry[] = [];
 
-    return [patternOption, ...withoutDuplicate];
-  }, [patternOption, workflows]);
+    selectedWorkflowNames.forEach((name) => {
+      const option = workflows.find((item) => item.name === name);
+      if (!option) {
+        return;
+      }
 
-  const selectedWorkflow = useMemo(() => {
-    if (!selectedWorkflowName) {
-      return null;
-    }
+      option.repositories.forEach((repoEntry) => {
+        entries.push({
+          ...repoEntry,
+          workflowName: extractWorkflowName(name),
+          key: buildWorkflowKey(repoEntry.repository, repoEntry.workflowId),
+        });
+      });
+    });
 
-    return (
-      availableWorkflows.find((item) => item.name === selectedWorkflowName) ??
-      null
-    );
-  }, [availableWorkflows, selectedWorkflowName]);
+    return entries.sort((a, b) => {
+      if (a.repository === b.repository) {
+        return a.workflowName.localeCompare(b.workflowName);
+      }
+
+      return a.repository.localeCompare(b.repository);
+    });
+  }, [selectedWorkflowNames, workflows]);
+
+  useEffect(() => {
+    workflowInputCacheRef.current = workflowInputCache;
+  }, [workflowInputCache]);
+
+  useEffect(() => {
+    setStatuses((previous) => {
+      const previousByKey = new Map(previous.map((entry) => [entry.key, entry]));
+
+      const next = selectedWorkflows.map((entry) => {
+        const existing = previousByKey.get(entry.key);
+
+        if (existing) {
+          return existing;
+        }
+
+        return {
+          key: entry.key,
+          repository: entry.repository,
+          workflowName: entry.workflowName,
+          status: "idle" as RepositoryActionStatus,
+        };
+      });
+
+      if (
+        previous.length === next.length &&
+        previous.every((item, index) => item.key === next[index].key)
+      ) {
+        return previous;
+      }
+
+      return next;
+    });
+  }, [selectedWorkflows]);
+
+  // Temporarily disabled the status update effect
+  // useEffect(() => {
+  //   setStatuses(selectedWorkflows.map((entry) => ({
+  //     key: entry.key,
+  //     repository: entry.repository,
+  //     workflowName: entry.workflowName,
+  //     status: "idle" as RepositoryActionStatus,
+  //   })));
+  // }, [selectedWorkflows.map(w => w.key).join(',')]);
 
   useEffect(() => {
     if (open) {
       setSourceBranch("");
-      setSelectedWorkflowName(null);
+      setSelectedWorkflowNames([]);
       setInputDefinitions([]);
       setInputValues({});
       setInputError(null);
       setRunSilently(false);
-      setStatuses(initialStatuses);
+      setWorkflowInputCache({});
+      setStatuses([]);
       setIsRunning(false);
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
-      patternAbortControllerRef.current?.abort();
-      patternAbortControllerRef.current = null;
-      setPattern("");
-      setPatternOption(null);
-      setPatternError(null);
-      setIsMatchingPattern(false);
+      inputAbortControllerRef.current?.abort();
+      inputAbortControllerRef.current = null;
       setHasDispatchedRuns(false);
     }
-  }, [open, initialStatuses]);
+  }, [open]);
 
   useEffect(() => {
-    if (!selectedWorkflow || !open) {
+    if (!open || selectedWorkflows.length === 0) {
       setInputDefinitions([]);
       setInputValues({});
       setInputError(null);
       return;
     }
 
-    const firstRepository = selectedWorkflow.repositories[0];
-    if (!firstRepository) {
-      setInputDefinitions([]);
-      setInputValues({});
-      setInputError(null);
-      return;
-    }
-
+    inputAbortControllerRef.current?.abort();
     const controller = new AbortController();
+    inputAbortControllerRef.current = controller;
     setIsFetchingInputs(true);
     setInputError(null);
 
-    fetchWorkflowInputs(
-      organization,
-      firstRepository.repository,
-      firstRepository.workflowPath,
-      controller.signal
-    )
-      .then((definitions) => {
-        setInputDefinitions(definitions);
-        setInputValues(
-          Object.fromEntries(
-            definitions.map((definition) => [
-              definition.id,
-              definition.defaultValue ?? "",
-            ])
-          )
+    const loadInputs = async () => {
+      const cacheCopy: WorkflowInputCache = { ...workflowInputCacheRef.current };
+      let cacheUpdated = false;
+      const aggregated = new Map<string, AggregatedInputDefinition>();
+
+      for (const entry of selectedWorkflows) {
+        const cacheKey = buildInputCacheKey(
+          entry.repository,
+          entry.workflowId,
+          entry.workflowPath
         );
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) {
-          return;
+
+        let definitions = cacheCopy[cacheKey];
+
+        if (!definitions) {
+          try {
+            definitions = await fetchWorkflowInputs(
+              organization,
+              entry.repository,
+              entry.workflowPath,
+              controller.signal
+            );
+            cacheCopy[cacheKey] = definitions;
+            cacheUpdated = true;
+          } catch (error) {
+            if (controller.signal.aborted) {
+              return;
+            }
+
+            if (error instanceof GithubApiError) {
+              setInputError(error.message);
+            } else if (error instanceof Error) {
+              setInputError(error.message);
+            } else {
+              setInputError("Unable to load workflow inputs.");
+            }
+            return;
+          }
         }
 
-        if (error instanceof GithubApiError) {
-          setInputError(error.message);
-        } else if (error instanceof Error) {
-          setInputError(error.message);
-        } else {
-          setInputError("Unable to load workflow inputs.");
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setIsFetchingInputs(false);
-        }
+        definitions.forEach((definition) => {
+          const existing = aggregated.get(definition.id);
+
+          if (!existing) {
+            aggregated.set(definition.id, {
+              ...definition,
+              required: Boolean(definition.required),
+              requiredBy: definition.required ? [entry.workflowName] : [],
+              repositories: [entry.repository],
+              workflows: [entry.workflowName],
+            });
+            return;
+          }
+
+          if (definition.required) {
+            existing.requiredBy = Array.from(
+              new Set([...existing.requiredBy, entry.workflowName])
+            );
+            existing.required = true;
+          }
+
+          existing.repositories = Array.from(
+            new Set([...existing.repositories, entry.repository])
+          );
+          existing.workflows = Array.from(
+            new Set([...existing.workflows, entry.workflowName])
+          );
+
+          if (definition.defaultValue && !existing.defaultValue) {
+            existing.defaultValue = definition.defaultValue;
+          }
+
+          if (definition.options?.length) {
+            existing.options = Array.from(
+              new Set([...(existing.options ?? []), ...definition.options])
+            );
+          }
+        });
+      }
+
+      if (cacheUpdated) {
+        workflowInputCacheRef.current = cacheCopy;
+        setWorkflowInputCache(cacheCopy);
+      }
+      const aggregatedList = Array.from(aggregated.values()).sort((a, b) =>
+        a.label.localeCompare(b.label)
+      );
+      setInputDefinitions(aggregatedList);
+      setInputValues((prev) => {
+        const next = { ...prev };
+        aggregatedList.forEach((definition) => {
+          if (next[definition.id] === undefined) {
+            next[definition.id] = String(definition.defaultValue ?? "");
+          }
+        });
+        return next;
       });
+    };
+
+    loadInputs().finally(() => {
+      if (!controller.signal.aborted) {
+        setIsFetchingInputs(false);
+      }
+    });
 
     return () => {
       controller.abort();
     };
-  }, [organization, open, selectedWorkflow]);
+  }, [organization, open, selectedWorkflows]);
 
   const updateStatus = useCallback(
     (
-      repository: string,
+      workflowKey: string,
       status: RepositoryActionStatus,
       message?: string,
       runUrl?: string
     ) => {
       setStatuses((previous) =>
         previous.map((entry) =>
-          entry.name === repository
-            ? { ...entry, status, message, runUrl }
-            : entry
+          entry.key === workflowKey ? { ...entry, status, message, runUrl } : entry
         )
       );
     },
@@ -395,136 +471,25 @@ export function BulkWorkflowRunDialog({
     []
   );
 
-  const handleApplyPattern = useCallback(async () => {
-    const trimmedPattern = pattern.trim();
+  const handleWorkflowSelection = useCallback(
+    (workflowName: string, checked: boolean) => {
+      setSelectedWorkflowNames((prev) => {
+        if (checked) {
+          if (prev.includes(workflowName)) {
+            return prev;
+          }
 
-    patternAbortControllerRef.current?.abort();
-
-    if (!trimmedPattern) {
-      setPatternOption(null);
-      setPatternError(null);
-      setSelectedWorkflowName(null);
-      return;
-    }
-
-    if (!organization) {
-      setPatternError("Missing organization context for pattern matching.");
-      setPatternOption(null);
-      setSelectedWorkflowName(null);
-      return;
-    }
-
-    if (repositories.length === 0) {
-      setPatternError(
-        "Select at least one repository before matching workflows."
-      );
-      setPatternOption(null);
-      setSelectedWorkflowName(null);
-      return;
-    }
-
-    const normalizedPattern = trimmedPattern.toLowerCase();
-    const matches = [] as {
-      repository: string;
-      summary: RepositoryWorkflowSummary;
-    }[];
-
-    for (const repository of repositories) {
-      const workflowsForRepo = repositoryWorkflows[repository] ?? [];
-      const repoMatches = workflowsForRepo.filter((workflow) =>
-        workflow.name.toLowerCase().includes(normalizedPattern)
-      );
-
-      if (repoMatches.length === 0) {
-        setPatternError(
-          `No workflows in repository "${repository}" match the provided pattern.`
-        );
-        setPatternOption(null);
-        setSelectedWorkflowName(null);
-        return;
-      }
-
-      if (repoMatches.length > 1) {
-        setPatternError(
-          `Pattern is ambiguous in repository "${repository}". Refine it to match a single workflow.`
-        );
-        setPatternOption(null);
-        setSelectedWorkflowName(null);
-        return;
-      }
-
-      matches.push({ repository, summary: repoMatches[0] });
-    }
-
-    const controller = new AbortController();
-    patternAbortControllerRef.current = controller;
-    setIsMatchingPattern(true);
-    setPatternError(null);
-
-    try {
-      let referenceInputs: WorkflowDispatchInputDefinition[] | null = null;
-
-      for (const match of matches) {
-        const inputs = await fetchWorkflowInputs(
-          organization,
-          match.repository,
-          match.summary.path,
-          controller.signal
-        );
-
-        if (!referenceInputs) {
-          referenceInputs = inputs;
-          continue;
+          return [...prev, workflowName];
         }
 
-        if (!areInputDefinitionsEqual(referenceInputs, inputs)) {
-          setPatternError(
-            "Matched workflows do not share the same dispatch inputs. Refine the pattern."
-          );
-          setPatternOption(null);
-          setSelectedWorkflowName(null);
-          return;
-        }
-      }
-
-      const optionName = `Pattern: ${trimmedPattern}`;
-      setPatternOption({
-        name: optionName,
-        repositories: matches.map(({ repository, summary }) => ({
-          repository,
-          workflowId: summary.id,
-          workflowPath: summary.path,
-          workflowHtmlUrl: summary.htmlUrl,
-        })),
+        return prev.filter((name) => name !== workflowName);
       });
-      setSelectedWorkflowName(optionName);
-      setPatternError(null);
-    } catch (error) {
-      if (controller.signal.aborted) {
-        return;
-      }
-
-      if (error instanceof GithubApiError) {
-        setPatternError(
-          error.message || "Failed to load workflow inputs for comparison."
-        );
-      } else if (error instanceof Error) {
-        setPatternError(error.message);
-      } else {
-        setPatternError("Unexpected error while matching pattern.");
-      }
-      setPatternOption(null);
-      setSelectedWorkflowName(null);
-    } finally {
-      if (patternAbortControllerRef.current === controller) {
-        patternAbortControllerRef.current = null;
-      }
-      setIsMatchingPattern(false);
-    }
-  }, [organization, pattern, repositories, repositoryWorkflows]);
+    },
+    []
+  );
 
   const handleCreateRuns = useCallback(async () => {
-    if (!selectedWorkflow || !sourceBranch.trim()) {
+    if (selectedWorkflows.length === 0 || !sourceBranch.trim()) {
       return;
     }
 
@@ -533,27 +498,33 @@ export function BulkWorkflowRunDialog({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    const inputsPayload = runSilently
-      ? undefined
-      : inputDefinitions.reduce<Record<string, string>>(
-          (acc, definition) => {
-            const value = inputValues[definition.id]?.trim() ?? "";
-            if (value) {
-              acc[definition.id] = value;
-            }
-            return acc;
-          },
-          {}
-        );
-
-    const tasks = selectedWorkflow.repositories.map((entry) =>
+    const tasks = selectedWorkflows.map((entry) =>
       (async () => {
         if (controller.signal.aborted) {
-          updateStatus(entry.repository, "cancelled", "Operation cancelled.");
+          updateStatus(entry.key, "cancelled", "Operation cancelled.");
           return;
         }
 
-        updateStatus(entry.repository, "pending", "Dispatching workflow...");
+        updateStatus(entry.key, "pending", "Dispatching workflow...");
+
+        // Get the specific inputs for this workflow
+        const cacheKey = buildInputCacheKey(
+          entry.repository,
+          entry.workflowId,
+          entry.workflowPath
+        );
+        const workflowInputs = workflowInputCacheRef.current[cacheKey] ?? [];
+
+        // Filter inputs to only include those defined for this specific workflow
+        const inputsPayload = runSilently
+          ? undefined
+          : workflowInputs.reduce<Record<string, string>>((acc, definition) => {
+              const value = String(inputValues[definition.id] ?? "").trim();
+              if (value) {
+                acc[definition.id] = value;
+              }
+              return acc;
+            }, {});
 
         try {
           await dispatchWorkflow(
@@ -566,11 +537,11 @@ export function BulkWorkflowRunDialog({
           );
 
           if (controller.signal.aborted) {
-            updateStatus(entry.repository, "cancelled", "Operation cancelled.");
+            updateStatus(entry.key, "cancelled", "Operation cancelled.");
             return;
           }
 
-          updateStatus(entry.repository, "pending", "Waiting for run to begin...");
+          updateStatus(entry.key, "pending", "Waiting for run to begin...");
 
           const runUrl = await waitForRunUrl(
             organization,
@@ -581,12 +552,12 @@ export function BulkWorkflowRunDialog({
           );
 
           if (controller.signal.aborted) {
-            updateStatus(entry.repository, "cancelled", "Operation cancelled.");
+            updateStatus(entry.key, "cancelled", "Operation cancelled.");
             return;
           }
 
           updateStatus(
-            entry.repository,
+            entry.key,
             "success",
             runUrl
               ? "Workflow dispatched."
@@ -595,7 +566,7 @@ export function BulkWorkflowRunDialog({
           );
         } catch (error) {
           if (controller.signal.aborted) {
-            updateStatus(entry.repository, "cancelled", "Operation cancelled.");
+            updateStatus(entry.key, "cancelled", "Operation cancelled.");
             return;
           }
 
@@ -606,7 +577,7 @@ export function BulkWorkflowRunDialog({
             message = error.message;
           }
 
-          updateStatus(entry.repository, "error", message);
+          updateStatus(entry.key, "error", message);
         }
       })()
     );
@@ -620,7 +591,7 @@ export function BulkWorkflowRunDialog({
     inputValues,
     organization,
     runSilently,
-    selectedWorkflow,
+    selectedWorkflows,
     sourceBranch,
     updateStatus,
   ]);
@@ -657,195 +628,167 @@ export function BulkWorkflowRunDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="flex h-[80vh] max-w-3xl flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Run workflows</DialogTitle>
           <DialogDescription>
-            Select a workflow common to all repositories, provide the branch and
-            inputs, then queue runs in bulk.
+            Select one or more workflows from the available repositories, provide the branch and inputs, then queue runs in bulk.
           </DialogDescription>
         </DialogHeader>
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {loadError ? (
+            <p className="text-sm text-destructive">{loadError}</p>
+          ) : null}
 
-        {loadError ? (
-          <p className="text-sm text-destructive">{loadError}</p>
-        ) : null}
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="workflow-select">Workflow</Label>
-            <div className="space-y-1">
-              <Label
-                htmlFor="workflow-pattern"
-                className="text-xs uppercase text-muted-foreground"
-              >
-                Match pattern (optional)
-              </Label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  id="workflow-pattern"
-                  placeholder="e.g. deploy"
-                  value={pattern}
-                  onChange={(event) => setPattern(event.target.value)}
-                  disabled={
-                    isRunning || isLoadingWorkflows || isMatchingPattern
-                  }
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleApplyPattern}
-                  disabled={
-                    isRunning ||
-                    isLoadingWorkflows ||
-                    isMatchingPattern ||
-                    repositories.length === 0
-                  }
-                >
-                  {isMatchingPattern ? "Matching..." : "Apply"}
-                </Button>
-              </div>
-              {patternError ? (
-                <p className="text-xs text-destructive">{patternError}</p>
-              ) : null}
-            </div>
-            <Select
-              value={selectedWorkflowName ?? undefined}
-              onValueChange={(value) => setSelectedWorkflowName(value)}
-              disabled={isLoadingWorkflows || isRunning}
-            >
-              <SelectTrigger id="workflow-select">
-                <SelectValue
-                  placeholder={
-                    isLoadingWorkflows
-                      ? "Loading workflows..."
-                      : "Select workflow"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {availableWorkflows.length ? (
-                  availableWorkflows.map((option) => (
-                    <SelectItem key={option.name} value={option.name}>
-                      {option.name}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="__none" disabled>
-                    {isLoadingWorkflows
-                      ? "Loading..."
-                      : "No common workflows available"}
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="source-branch-run">Branch</Label>
-            <Input
-              id="source-branch-run"
-              placeholder="main"
-              value={sourceBranch}
-              onChange={(event) => setSourceBranch(event.target.value)}
-              disabled={isRunning}
-            />
-          </div>
-
-          {inputDefinitions.length ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Inputs</Label>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="run-silently"
-                    checked={runSilently}
-                    onCheckedChange={handleCheckboxChange}
-                    disabled={isRunning}
-                  />
-                  <Label
-                    htmlFor="run-silently"
-                    className="text-xs text-muted-foreground"
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="workflow-select">Workflows</Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-between"
+                    disabled={isLoadingWorkflows || isRunning}
                   >
-                    Do not send inputs (use defaults)
-                  </Label>
+                    {selectedWorkflowNames.length === 0
+                      ? "Select workflows"
+                      : `${selectedWorkflowNames.length} workflow${
+                          selectedWorkflowNames.length === 1 ? "" : "s"
+                        } selected`}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full max-h-80 overflow-y-auto">
+                  <DropdownMenuLabel>Available Workflows</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {workflows.length ? (
+                    workflows.map((option) => (
+                      <DropdownMenuCheckboxItem
+                        key={option.name}
+                        checked={selectedWorkflowNames.includes(option.name)}
+                        onCheckedChange={(checked) =>
+                          handleWorkflowSelection(option.name, checked)
+                        }
+                      >
+                        {option.name}
+                      </DropdownMenuCheckboxItem>
+                    ))
+                  ) : (
+                    <div className="px-2 py-1 text-sm text-muted-foreground">
+                      {isLoadingWorkflows ? "Loading..." : "No workflows available"}
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="source-branch-run">Branch</Label>
+              <Input
+                id="source-branch-run"
+                placeholder="main"
+                value={sourceBranch}
+                onChange={(event) => setSourceBranch(event.target.value)}
+                disabled={isRunning}
+              />
+            </div>
+
+            {inputDefinitions.length ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Inputs</Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="run-silently"
+                      checked={runSilently}
+                      onCheckedChange={handleCheckboxChange}
+                      disabled={isRunning}
+                    />
+                    <Label
+                      htmlFor="run-silently"
+                      className="text-xs text-muted-foreground"
+                    >
+                      Do not send inputs (use defaults)
+                    </Label>
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {inputDefinitions.map((definition) => (
+                    <div key={definition.id} className="space-y-1">
+                      <Label
+                        htmlFor={`input-${definition.id}`}
+                        className="text-xs uppercase text-muted-foreground"
+                      >
+                        {definition.label}
+                      </Label>
+                      <Input
+                        id={`input-${definition.id}`}
+                        value={inputValues[definition.id] ?? ""}
+                        onChange={handleInputChange(definition.id)}
+                        disabled={isRunning || runSilently}
+                      />
+                      {definition.description ? (
+                        <p className="text-xs text-muted-foreground">
+                          {definition.description}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {inputDefinitions.map((definition) => (
-                  <div key={definition.id} className="space-y-1">
-                    <Label
-                      htmlFor={`input-${definition.id}`}
-                      className="text-xs uppercase text-muted-foreground"
-                    >
-                      {definition.label}
-                    </Label>
-                    <Input
-                      id={`input-${definition.id}`}
-                      value={inputValues[definition.id] ?? ""}
-                      onChange={handleInputChange(definition.id)}
-                      disabled={isRunning || runSilently}
-                    />
-                    {definition.description ? (
-                      <p className="text-xs text-muted-foreground">
-                        {definition.description}
-                      </p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {inputError ? (
-            <p className="text-sm text-destructive">{inputError}</p>
-          ) : isFetchingInputs ? (
-            <p className="text-sm text-muted-foreground">
-              Loading workflow inputs...
-            </p>
-          ) : null}
+            {inputError ? (
+              <p className="text-sm text-destructive">{inputError}</p>
+            ) : isFetchingInputs ? (
+              <p className="text-sm text-muted-foreground">
+                Loading workflow inputs...
+              </p>
+            ) : null}
 
-          <Separator />
+            <Separator />
 
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold">Progress</h4>
-            <ul className="space-y-2">
-              {statuses.map((entry) => (
-                <li
-                  key={entry.name}
-                  className="flex items-start justify-between gap-4 rounded-md border p-3 text-sm"
-                >
-                  <div className="space-y-1">
-                    <p className="font-medium">{entry.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {entry.message ?? "Awaiting action."}
-                    </p>
-                    {entry.status === "success" && entry.runUrl ? (
-                      <a
-                        href={entry.runUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                      >
-                        View runs
-                        <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                      </a>
-                    ) : null}
-                  </div>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      STATUS_STYLE[entry.status]
-                    }`}
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold">Progress</h4>
+              <ul className="space-y-2">
+                {statuses.map((entry) => (
+                  <li
+                    key={entry.key}
+                    className="flex items-start justify-between gap-4 rounded-md border p-3 text-sm"
                   >
-                    {entry.status.charAt(0).toUpperCase() +
-                      entry.status.slice(1)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+                    <div className="space-y-1">
+                      <p className="font-medium">
+                        {entry.repository} - {entry.workflowName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.message ?? "Awaiting action."}
+                      </p>
+                      {entry.status === "success" && entry.runUrl ? (
+                        <a
+                          href={entry.runUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                        >
+                          View runs
+                          <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                        </a>
+                      ) : null}
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        STATUS_STYLE[entry.status]
+                      }`}
+                    >
+                      {entry.status.charAt(0).toUpperCase() +
+                        entry.status.slice(1)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
-
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+        <DialogFooter className="shrink-0 flex flex-col gap-2 sm:flex-row sm:justify-between">
           <Button
             type="button"
             variant="ghost"
@@ -869,7 +812,7 @@ export function BulkWorkflowRunDialog({
               disabled={
                 isRunning ||
                 isLoadingWorkflows ||
-                !selectedWorkflow ||
+                selectedWorkflows.length === 0 ||
                 !sourceBranch.trim() ||
                 repositories.length === 0 ||
                 hasDispatchedRuns ||
@@ -877,7 +820,7 @@ export function BulkWorkflowRunDialog({
                   !runSilently &&
                   inputDefinitions.some(
                     (definition) =>
-                      definition.required && !inputValues[definition.id]?.trim()
+                      definition.required && !String(inputValues[definition.id] ?? "").trim()
                   ))
               }
             >

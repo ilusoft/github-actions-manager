@@ -32,6 +32,64 @@ const formatDate = (value?: string) => {
   return parsed.toLocaleString();
 };
 
+const getMergeabilityBadge = (
+  mergeable?: boolean,
+  mergeableState?: string | null
+): { label: string; className: string; description?: string } | null => {
+  if (mergeable === true || mergeableState === "clean") {
+    return {
+      label: "Mergeable",
+      className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+      description: "This pull request is ready to merge without conflicts.",
+    };
+  }
+
+  if (mergeable === false || mergeableState === "dirty") {
+    return {
+      label: "Conflicts",
+      className: "bg-destructive/15 text-destructive",
+      description: "Conflicts must be resolved before merging.",
+    };
+  }
+
+  if (mergeableState) {
+    const normalized = mergeableState.toLowerCase();
+    if (normalized === "blocked") {
+      return {
+        label: "Merge blocked",
+        className: "bg-amber-500/20 text-amber-700 dark:text-amber-300",
+        description: "Merge requirements (approvals or checks) are not satisfied yet.",
+      };
+    }
+
+    if (normalized === "behind") {
+      return {
+        label: "Out of date",
+        className: "bg-amber-500/20 text-amber-700 dark:text-amber-300",
+        description: "Update the branch with the base branch before merging.",
+      };
+    }
+
+    if (normalized === "unstable") {
+      return {
+        label: "Checks failing",
+        className: "bg-amber-500/20 text-amber-700 dark:text-amber-300",
+        description: "Status checks must pass before merging.",
+      };
+    }
+  }
+
+  if (mergeable === undefined && !mergeableState) {
+    return null;
+  }
+
+  return {
+    label: "Merge status unknown",
+    className: "bg-muted text-muted-foreground",
+    description: "GitHub has not yet finished computing mergeability.",
+  };
+};
+
 const getStatusBadge = (
   state: "open" | "closed",
   merged: boolean,
@@ -147,6 +205,10 @@ function RepositoryPullRequestSection({
                 const status = getStatusBadge(pr.state, pr.merged, pr.draft);
                 const isSelectable = pr.state === "open" && !pr.draft;
                 const isChecked = selectedIds?.has(pr.number) ?? false;
+                const mergeability =
+                  pr.state === "open" && !pr.draft
+                    ? getMergeabilityBadge(pr.mergeable, pr.mergeableState)
+                    : null;
                 const handleSelectionChange = (checked: boolean | "indeterminate") => {
                   if (!onPullRequestSelectionChange || !isSelectable) {
                     return;
@@ -206,6 +268,18 @@ function RepositoryPullRequestSection({
                               </>
                             ) : null}
                           </p>
+                          {mergeability ? (
+                            <p className="flex flex-wrap items-center gap-2 text-foreground">
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${mergeability.className}`}
+                              >
+                                {mergeability.label}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {mergeability.description}
+                              </span>
+                            </p>
+                          ) : null}
                           {pr.description ? (
                             <p className="line-clamp-3 text-foreground">
                               {pr.description}

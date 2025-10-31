@@ -100,6 +100,7 @@ export function RepositoryWorkflowDashboard({
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(
     () => new Date()
   );
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const lastRefreshedLabel = useMemo(
     () => lastRefreshedAt.toLocaleString(),
     [lastRefreshedAt]
@@ -167,15 +168,7 @@ export function RepositoryWorkflowDashboard({
   const [activeWorkflow, setActiveWorkflow] = useState<
     RepositoryWorkflowSummary | null
   >(null);
-  const handleWorkflowDialogChange = useCallback((open: boolean) => {
-    if (!open) {
-      setBulkWorkflowOptions([]);
-      setBulkWorkflowError(null);
-    }
-
-    setIsBulkWorkflowDialogOpen(open);
-  }, []);
-
+  
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setDebouncedFilters(filters);
@@ -243,59 +236,33 @@ export function RepositoryWorkflowDashboard({
           return;
         }
 
-        const workflowCounts = new Map<
-          string,
-          {
-            name: string;
-            repos: number;
-            details: BulkWorkflowOption["repositories"];
-          }
-        >();
+        const allWorkflows: BulkWorkflowOption[] = [];
 
         selected.forEach((repo) => {
           const workflows = workflowSummariesByRepo.get(repo) ?? [];
           workflows.forEach((workflow: RepositoryWorkflowSummary) => {
-            const key = `${workflow.name}__${workflow.path}`;
-            const current = workflowCounts.get(key);
-            if (current) {
-              current.repos += 1;
-              current.details.push({
-                repository: repo,
-                workflowId: workflow.id,
-                workflowPath: workflow.path,
-                workflowHtmlUrl: workflow.htmlUrl,
-              });
-            } else {
-              workflowCounts.set(key, {
-                name: workflow.name,
-                repos: 1,
-                details: [
-                  {
-                    repository: repo,
-                    workflowId: workflow.id,
-                    workflowPath: workflow.path,
-                    workflowHtmlUrl: workflow.htmlUrl,
-                  },
-                ],
-              });
-            }
+            allWorkflows.push({
+              name: `${repo} - ${workflow.name}`,
+              repositories: [
+                {
+                  repository: repo,
+                  workflowId: workflow.id,
+                  workflowPath: workflow.path,
+                  workflowHtmlUrl: workflow.htmlUrl,
+                },
+              ],
+            });
           });
         });
 
-        const intersecting: BulkWorkflowOption[] = Array.from(
-          workflowCounts.entries()
-        )
-          .filter(([, value]) => value.repos === selected.length)
-          .map(([, value]) => ({
-            name: value.name,
-            repositories: value.details,
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name));
+        const sortedWorkflows = allWorkflows.sort((a, b) => 
+          a.name.localeCompare(b.name)
+        );
 
-        setBulkWorkflowOptions(intersecting);
+        setBulkWorkflowOptions(sortedWorkflows);
         setBulkWorkflowError(
-          intersecting.length === 0
-            ? "No common workflows were found across the selected repositories."
+          sortedWorkflows.length === 0
+            ? "No workflows were found in the selected repositories."
             : null
         );
         setIsBulkWorkflowDialogOpen(true);
@@ -577,6 +544,22 @@ export function RepositoryWorkflowDashboard({
     pullRequestAuthor,
   ]);
 
+  useEffect(() => {
+    if (!autoRefreshEnabled) {
+      return undefined;
+    }
+
+    handleRefresh();
+
+    const intervalId = window.setInterval(() => {
+      handleRefresh();
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [autoRefreshEnabled, handleRefresh]);
+
   const handlePullRequestMergeCompleted = useCallback(() => {
     if (!organization) {
       return;
@@ -663,10 +646,9 @@ export function RepositoryWorkflowDashboard({
         repositories={selectedRepositoriesArray}
         workflows={bulkWorkflowOptions}
         open={isBulkWorkflowDialogOpen}
-        onOpenChange={handleWorkflowDialogChange}
+        onOpenChange={setIsBulkWorkflowDialogOpen}
         isLoadingWorkflows={isAnyWorkflowLoading}
-        loadError={bulkWorkflowError ?? undefined}
-        repositoryWorkflows={Object.fromEntries(workflowSummariesByRepo)}
+        loadError={bulkWorkflowError}
       />
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4">
@@ -678,8 +660,9 @@ export function RepositoryWorkflowDashboard({
             viewMode={viewMode}
             lastRefreshedLabel={lastRefreshedLabel}
             onViewModeChange={setViewMode}
-            onRefresh={handleRefresh}
-            refreshAriaLabel="Refresh view data"
+            autoRefreshEnabled={autoRefreshEnabled}
+            onAutoRefreshToggle={setAutoRefreshEnabled}
+            autoRefreshAriaLabel="Toggle auto refresh"
           />
         </div>
         {viewMode === "workflows" ? (

@@ -125,6 +125,7 @@ export function BulkPrDialog({
           trimmedSource,
           trimmedTarget,
           trimmedDescription || undefined,
+          false, // draft = false
           controller.signal
         );
 

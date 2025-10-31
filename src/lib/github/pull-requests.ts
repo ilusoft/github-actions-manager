@@ -23,6 +23,8 @@ interface GithubPullRequest {
   head?: GithubPullRequestBranchRef;
   user?: GithubPullRequestUser | null;
   body?: string | null;
+  mergeable?: boolean | null;
+  mergeable_state?: string | null;
 }
 
 export interface RepositoryPullRequestRequestOptions {
@@ -47,6 +49,8 @@ export interface RepositoryPullRequestSummary {
   headSha?: string;
   author?: string;
   description?: string;
+  mergeable?: boolean;
+  mergeableState?: string;
 }
 
 const normalizeBody = (value?: string | null) => {
@@ -88,6 +92,33 @@ export const fetchRepositoryPullRequests = async (
 
   const authorFilter = options?.author?.trim().toLowerCase();
 
+  const detailMap = new Map<number, GithubPullRequest>();
+  const openPulls = pulls.filter((pull) => pull.state !== "closed");
+
+  if (openPulls.length > 0) {
+    await Promise.all(
+      openPulls.map(async (pull) => {
+        try {
+          const detail = await fetchGithubJson<GithubPullRequest>({
+            path: `/repos/${encodedOrg}/${encodedRepo}/pulls/${pull.number}`,
+            signal: options?.signal,
+          });
+          if (detail) {
+            detailMap.set(pull.number, detail);
+          }
+        } catch (error) {
+          if (
+            error instanceof DOMException &&
+            error.name === "AbortError"
+          ) {
+            throw error;
+          }
+          // Ignore other errors when fetching mergeability info.
+        }
+      })
+    );
+  }
+
   const summaries = pulls
     .filter((pull) => {
       if (!authorFilter) {
@@ -100,6 +131,10 @@ export const fetchRepositoryPullRequests = async (
     .map((pull) => {
       const merged = Boolean(pull.merged_at);
       const draft = Boolean(pull.draft);
+      const detail = detailMap.get(pull.number) ?? pull;
+      const rawMergeable = detail.mergeable;
+      const mergeable = typeof rawMergeable === "boolean" ? rawMergeable : undefined;
+      const mergeableState = detail.mergeable_state ?? undefined;
 
       return {
         number: pull.number,
@@ -116,6 +151,8 @@ export const fetchRepositoryPullRequests = async (
         headSha: pull.head?.sha,
         author: pull.user?.login,
         description: normalizeBody(pull.body),
+        mergeable,
+        mergeableState,
       } satisfies RepositoryPullRequestSummary;
     });
 

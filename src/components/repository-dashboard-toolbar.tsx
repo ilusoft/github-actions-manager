@@ -15,16 +15,18 @@ interface RepositoryDashboardToolbarProps {
   viewMode: RepositoryViewMode;
   lastRefreshedLabel: string;
   onViewModeChange: (mode: RepositoryViewMode) => void;
-  onRefresh: () => void;
-  refreshAriaLabel?: string;
+  autoRefreshEnabled: boolean;
+  onAutoRefreshToggle: (nextEnabled: boolean) => void;
+  autoRefreshAriaLabel?: string;
 }
 
 const RepositoryDashboardToolbarComponent = ({
   viewMode,
   lastRefreshedLabel,
   onViewModeChange,
-  onRefresh,
-  refreshAriaLabel = "Refresh view data",
+  autoRefreshEnabled,
+  onAutoRefreshToggle,
+  autoRefreshAriaLabel = "Toggle auto refresh",
 }: RepositoryDashboardToolbarProps) => {
   return (
     <div className="flex items-center gap-3">
@@ -46,12 +48,17 @@ const RepositoryDashboardToolbarComponent = ({
       </span>
       <Button
         type="button"
-        variant="outline"
-        size="icon"
-        onClick={onRefresh}
-        aria-label={refreshAriaLabel}
+        variant={autoRefreshEnabled ? "default" : "outline"}
+        size="sm"
+        onClick={() => onAutoRefreshToggle(!autoRefreshEnabled)}
+        aria-pressed={autoRefreshEnabled}
+        aria-label={autoRefreshAriaLabel}
+        className="flex items-center gap-2"
       >
         <RefreshCwIcon className="h-4 w-4" aria-hidden="true" />
+        <span className="text-xs font-medium">
+          Auto refresh {autoRefreshEnabled ? "on" : "off"}
+        </span>
       </Button>
     </div>
   );
