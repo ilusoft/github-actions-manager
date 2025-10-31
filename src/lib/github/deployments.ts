@@ -13,6 +13,7 @@ export interface DeploymentDetails {
   commitUrl?: string;
   initiatedBy?: string;
   targetUrl?: string;
+  tag?: string;
 }
 
 export interface EnvironmentDeploymentSummary {
@@ -69,6 +70,18 @@ interface GithubCommitSummary {
   };
 }
 
+interface GithubTag {
+  name: string;
+  commit: {
+    sha: string;
+    url: string;
+  };
+  zipball_url: string;
+  tarball_url: string;
+  node_id: string;
+}
+
+
 const STATUS_LABELS: Record<DeploymentStatusCategory, string> = {
   success: "Successful",
   failed: "Failed",
@@ -107,6 +120,29 @@ const firstLine = (value?: string) => {
   return line.trim();
 };
 
+export const fetchRepositoryTags = async (
+  organization: string,
+  repository: string,
+  signal?: AbortSignal
+): Promise<Map<string, string>> => {
+  const encodedOrg = encodeURIComponent(organization);
+  const encodedRepo = encodeURIComponent(repository);
+
+  const tags: GithubTag[] = await fetchGithubJson<GithubTag[]>({
+    path: `/repos/${encodedOrg}/${encodedRepo}/tags?per_page=100`,
+    signal,
+  });
+
+  const shaToTag = new Map<string, string>();
+  tags.forEach((tag) => {
+    if (tag.commit.sha) {
+      shaToTag.set(tag.commit.sha, tag.name);
+    }
+  });
+
+  return shaToTag;
+};
+
 export const fetchRepositoryEnvironmentDeployments = async (
   organization: string,
   repository: string,
@@ -125,6 +161,9 @@ export const fetchRepositoryEnvironmentDeployments = async (
   if (!environments.length) {
     return [];
   }
+
+  // Fetch tags once per repository to use for all deployments
+  const tagsMap = await fetchRepositoryTags(organization, repository, signal);
 
   const summaries = await Promise.all(
     environments.map(async (environment) => {
@@ -201,6 +240,8 @@ export const fetchRepositoryEnvironmentDeployments = async (
         commitSummary?.author?.login ??
         commitSummary?.commit?.author?.name;
 
+      const tag = latestDeployment.sha ? tagsMap.get(latestDeployment.sha) : undefined;
+
       const details: DeploymentDetails = {
         id: latestDeployment.id,
         status: deploymentStatus,
@@ -215,6 +256,7 @@ export const fetchRepositoryEnvironmentDeployments = async (
         initiatedBy,
         targetUrl:
           selectedStatus?.target_url ?? environment.html_url ?? commitSummary?.html_url,
+        tag,
       };
 
       return {

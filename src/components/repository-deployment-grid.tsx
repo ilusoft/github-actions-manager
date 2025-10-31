@@ -445,6 +445,16 @@ export function RepositoryDeploymentGrid({
                                 </dt>
                                 <dd className="truncate">{initiatedBy}</dd>
                               </div>
+                              {deployment.tag ? (
+                                <div className="flex items-center gap-2">
+                                  <dt className="flex-shrink-0 text-muted-foreground">
+                                    Tag
+                                  </dt>
+                                  <dd className="truncate font-mono text-xs">
+                                    {deployment.tag}
+                                  </dd>
+                                </div>
+                              ) : null}
                             </dl>
                           </div>
                         </td>
