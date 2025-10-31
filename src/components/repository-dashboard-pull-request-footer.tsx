@@ -1,21 +1,38 @@
-import { memo } from "react";
+import { memo, type BaseSyntheticEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+export type PullRequestBulkAction = "review" | "merge";
 
 interface RepositoryDashboardPullRequestFooterProps {
   count: number;
   disabled?: boolean;
-  onMergeClick: () => void;
+  onSelectAction: (action: PullRequestBulkAction) => void;
 }
 
 const RepositoryDashboardPullRequestFooterComponent = ({
   count,
   disabled = false,
-  onMergeClick,
+  onSelectAction,
 }: RepositoryDashboardPullRequestFooterProps) => {
   if (count === 0) {
     return null;
   }
+
+  const handleSelect = (action: PullRequestBulkAction) =>
+    (event: Event | BaseSyntheticEvent) => {
+      event.preventDefault();
+      if (disabled) {
+        return;
+      }
+      onSelectAction(action);
+    };
 
   return (
     <div className="fixed inset-x-0 bottom-4 z-40 px-4">
@@ -23,11 +40,21 @@ const RepositoryDashboardPullRequestFooterComponent = ({
         <div className="text-sm text-muted-foreground">
           {count} pull request{count === 1 ? "" : "s"} selected
         </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" onClick={onMergeClick} disabled={disabled}>
-            Merge pull requests
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="secondary" disabled={disabled}>
+              Bulk actions
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={handleSelect("review")}>
+              Review pull requests
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleSelect("merge")}>
+              Merge pull requests
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

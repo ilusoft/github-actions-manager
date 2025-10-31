@@ -52,6 +52,7 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 
 - **Bulk Branch Dialog**: create a new branch across all selected repositories from a shared base ref.
 - **Bulk PR Dialog**: open matching pull requests across repositories with a shared title, description, and source/target branches.
+- **Bulk PR Review Dialog**: approve, request changes, or comment on multiple pull requests selected in the **Pull Requests** dashboard view. The footer bulk-action selector exposes the review workflow, validates required comments for feedback/rejections, and tracks per-repository submission progress with success and error states.
 - **Bulk Workflow Run Dialog**: dispatch multiple workflow runs in parallel across selected repositories.
   - **Multi-select workflows**: Choose one or more workflows from all available workflows across selected repositories. Workflows are displayed in the format "{repository} - {workflow name}" and you can select multiple workflows to run simultaneously (no longer limited to workflows common to all repositories).
   - **Aggregated input handling**: Automatically combines inputs from all selected workflows, showing which workflows require each input and allowing you to provide values that apply to all relevant workflows.

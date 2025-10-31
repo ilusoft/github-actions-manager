@@ -21,16 +21,17 @@ import {
 } from "@/components/bulk-workflow-run-dialog";
 import { WorkflowDetailsDialog } from "@/components/workflow-details-dialog";
 import { RepositoryDashboardToolbar } from "@/components/repository-dashboard-toolbar";
-import { RepositoryDashboardViewContent } from "@/components/repository-dashboard-view-content";
 import {
-  RepositoryDashboardBulkActionsFooter,
-  type RepositoryBulkAction,
-} from "@/components/repository-dashboard-bulk-actions-footer";
-import { RepositoryDashboardBranchFooter } from "@/components/repository-dashboard-branch-footer";
-import { RepositoryDashboardPullRequestFooter } from "@/components/repository-dashboard-pull-request-footer";
+  RepositoryDashboardPullRequestFooter,
+} from "@/components/repository-dashboard-pull-request-footer";
+import type { PullRequestBulkAction } from "@/components/repository-dashboard-pull-request-footer";
 import { WorkflowFiltersCard } from "@/components/workflow-filters-card";
 import { BranchSettingsCard } from "@/components/branch-settings-card";
 import { PullRequestFiltersCard } from "@/components/pull-request-filters-card";
+import { RepositoryDashboardViewContent } from "@/components/repository-dashboard-view-content";
+import { RepositoryDashboardBulkActionsFooter } from "@/components/repository-dashboard-bulk-actions-footer";
+import type { RepositoryBulkAction } from "@/components/repository-dashboard-bulk-actions-footer";
+import { RepositoryDashboardBranchFooter } from "@/components/repository-dashboard-branch-footer";
 import {
   type WorkflowFilters,
   type RepositoryViewMode,
@@ -45,6 +46,7 @@ import { useBranchSelection } from "@/hooks/use-branch-selection";
 import { useRepositorySelection } from "@/hooks/use-repository-selection";
 import { usePullRequestSelection } from "@/hooks/use-pull-request-selection";
 import { BulkPullRequestMergeDialog } from "@/components/bulk-pull-request-merge-dialog";
+import { BulkPRReviewDialog } from "@/components/bulk-pr-review-dialog";
 
 const areArraysEqual = (left: string[], right: string[]) => {
   if (left === right) {
@@ -158,6 +160,8 @@ export function RepositoryWorkflowDashboard({
   const [isBulkWorkflowDialogOpen, setIsBulkWorkflowDialogOpen] =
     useState(false);
   const [isBulkPrMergeDialogOpen, setIsBulkPrMergeDialogOpen] =
+    useState(false);
+  const [isBulkPrReviewDialogOpen, setIsBulkPrReviewDialogOpen] =
     useState(false);
   const [bulkWorkflowOptions, setBulkWorkflowOptions] = useState<
     BulkWorkflowOption[]
@@ -600,6 +604,24 @@ export function RepositoryWorkflowDashboard({
     clearSelectedPullRequests,
   ]);
 
+  const handlePullRequestBulkAction = useCallback(
+    (action: PullRequestBulkAction) => {
+      if (!organization || selectedPullRequestEntries.length === 0) {
+        return;
+      }
+
+      if (action === "merge") {
+        setIsBulkPrMergeDialogOpen(true);
+        return;
+      }
+
+      if (action === "review") {
+        setIsBulkPrReviewDialogOpen(true);
+      }
+    },
+    [organization, selectedPullRequestEntries.length]
+  );
+
   if (!organization || enabledRepositories.length === 0) {
     return null;
   }
@@ -612,6 +634,12 @@ export function RepositoryWorkflowDashboard({
         open={isBulkPrMergeDialogOpen}
         onOpenChange={setIsBulkPrMergeDialogOpen}
         onCompleted={handlePullRequestMergeCompleted}
+      />
+      <BulkPRReviewDialog
+        organization={organization ?? ""}
+        selectedPullRequests={selectedPullRequestEntries}
+        open={isBulkPrReviewDialogOpen}
+        onOpenChange={setIsBulkPrReviewDialogOpen}
       />
       <WorkflowDetailsDialog
         workflow={activeWorkflow}
@@ -721,7 +749,7 @@ export function RepositoryWorkflowDashboard({
       {viewMode === "pullRequests" ? (
         <RepositoryDashboardPullRequestFooter
           count={selectedPullRequestCount}
-          onMergeClick={() => setIsBulkPrMergeDialogOpen(true)}
+          onSelectAction={handlePullRequestBulkAction}
           disabled={!organization || selectedPullRequestCount === 0}
         />
       ) : null}

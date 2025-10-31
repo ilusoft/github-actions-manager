@@ -205,3 +205,48 @@ export const createPullRequest = async (
     signal,
   });
 };
+
+export type PullRequestReviewEvent = "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+
+interface SubmitPullRequestReviewOptions {
+  organization: string;
+  repository: string;
+  pullNumber: number;
+  event: PullRequestReviewEvent;
+  body?: string;
+  signal?: AbortSignal;
+}
+
+interface PullRequestReviewResponse {
+  id: number;
+  state?: string;
+  html_url?: string;
+}
+
+export const submitPullRequestReview = async ({
+  organization,
+  repository,
+  pullNumber,
+  event,
+  body,
+  signal,
+}: SubmitPullRequestReviewOptions): Promise<PullRequestReviewResponse | void> => {
+  const encodedOrg = encodeURIComponent(organization);
+  const encodedRepo = encodeURIComponent(repository);
+
+  const payload: { event: PullRequestReviewEvent; body?: string } = { event };
+  const trimmedBody = body?.trim();
+  if (trimmedBody) {
+    payload.body = trimmedBody;
+  }
+
+  return fetchGithubJson<PullRequestReviewResponse | void>({
+    path: `/repos/${encodedOrg}/${encodedRepo}/pulls/${pullNumber}/reviews`,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+};
