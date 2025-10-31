@@ -2,6 +2,10 @@
 
 React + Vite application for exploring GitHub Actions workflows across repositories within a GitHub organization. This document tracks project rules, architecture decisions, and onboarding steps. Update it whenever new tooling or conventions are introduced.
 
+## Live Deployment
+
+- **GitHub Pages**: https://animated-adventure-jz58983.pages.github.io/
+
 ## Stack Overview
 
 - **Framework**: React 19 with TypeScript 5.9 (`src/` compiled by Vite 7).
