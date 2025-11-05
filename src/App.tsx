@@ -1,17 +1,20 @@
-import { Button } from "@/components/ui/button";
+import { Moon, Sun, HelpCircle } from "lucide-react";
+
 import { AccessTokenDialog } from "@/components/access-token-dialog";
 import { OrgRepoSelector } from "@/components/org-repo-selector";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useTheme } from "@/components/theme-provider";
 import { useGithubAccessToken } from "@/hooks/useGithubAccessToken";
-import { HelpCircle } from "lucide-react";
 
 function App() {
   const { hasToken, saveToken, clearToken } = useGithubAccessToken();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -63,6 +66,19 @@ function App() {
               >
                 Token creation guide
               </a>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            >
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Moon className="h-4 w-4" aria-hidden="true" />
+              )}
             </Button>
           </div>
         </div>
