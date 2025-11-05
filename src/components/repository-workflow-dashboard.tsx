@@ -46,7 +46,10 @@ import { useBranchSelection } from "@/hooks/use-branch-selection";
 import { useRepositorySelection } from "@/hooks/use-repository-selection";
 import { usePullRequestSelection } from "@/hooks/use-pull-request-selection";
 import { BulkPullRequestMergeDialog } from "@/components/bulk-pull-request-merge-dialog";
-import { BulkPRReviewDialog } from "@/components/bulk-pr-review-dialog";
+import {
+  BulkPRReviewDialog,
+  type ReviewProgressEntry,
+} from "@/components/bulk-pr-review-dialog";
 
 const areArraysEqual = (left: string[], right: string[]) => {
   if (left === right) {
@@ -604,6 +607,50 @@ export function RepositoryWorkflowDashboard({
     clearSelectedPullRequests,
   ]);
 
+  const handlePullRequestReviewCompleted = useCallback(
+    (results: ReviewProgressEntry[]) => {
+      if (!organization) {
+        return;
+      }
+
+      const repositoriesToRefresh = new Set(
+        results
+          .filter((entry) => entry.status !== "idle")
+          .map((entry) => entry.repository)
+      );
+
+      repositoriesToRefresh.forEach((repo) => {
+        queryClient.invalidateQueries({
+          queryKey: [
+            "github",
+            "org",
+            organization,
+            "repo",
+            repo,
+            "pulls",
+            pullRequestPerPage,
+            pullRequestState,
+            pullRequestBase,
+            pullRequestAuthor,
+            1,
+          ],
+        });
+      });
+
+      clearSelectedPullRequests();
+      setIsBulkPrReviewDialogOpen(false);
+    },
+    [
+      organization,
+      pullRequestAuthor,
+      pullRequestBase,
+      pullRequestPerPage,
+      pullRequestState,
+      queryClient,
+      clearSelectedPullRequests,
+    ]
+  );
+
   const handlePullRequestBulkAction = useCallback(
     (action: PullRequestBulkAction) => {
       if (!organization || selectedPullRequestEntries.length === 0) {
@@ -640,6 +687,7 @@ export function RepositoryWorkflowDashboard({
         selectedPullRequests={selectedPullRequestEntries}
         open={isBulkPrReviewDialogOpen}
         onOpenChange={setIsBulkPrReviewDialogOpen}
+        onCompleted={handlePullRequestReviewCompleted}
       />
       <WorkflowDetailsDialog
         workflow={activeWorkflow}

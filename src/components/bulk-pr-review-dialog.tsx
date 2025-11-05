@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { CheckIcon, MessageSquareIcon, XIcon } from "lucide-react";
 
@@ -35,9 +35,10 @@ interface BulkPRReviewDialogProps {
   onOpenChange: (open: boolean) => void;
   organization: string;
   selectedPullRequests: PullRequestSelectionEntry[];
+  onCompleted?: (results: ReviewProgressEntry[]) => void;
 }
 
-interface ReviewProgressEntry {
+export interface ReviewProgressEntry {
   key: string;
   repository: string;
   pullRequestNumber: number;
@@ -74,15 +75,18 @@ export function BulkPRReviewDialog({
   onOpenChange,
   organization,
   selectedPullRequests,
+  onCompleted,
 }: BulkPRReviewDialogProps) {
   const [reviewStatus, setReviewStatus] =
     useState<BulkPRReviewStatus>("comment");
   const [comment, setComment] = useState("");
   const [statuses, setStatuses] = useState<ReviewProgressEntry[]>([]);
+  const hasNotifiedCompletion = useRef(false);
 
   useEffect(() => {
     if (!open) {
       setStatuses([]);
+      hasNotifiedCompletion.current = false;
       return;
     }
 
@@ -95,7 +99,31 @@ export function BulkPRReviewDialog({
         message: "Ready to submit review.",
       }))
     );
+    hasNotifiedCompletion.current = false;
   }, [open, selectedPullRequests]);
+
+  useEffect(() => {
+    if (!open || !onCompleted) {
+      return;
+    }
+
+    if (statuses.length === 0) {
+      return;
+    }
+
+    const hasAttempt = statuses.some((entry) => entry.status !== "idle");
+    if (!hasAttempt) {
+      return;
+    }
+
+    const hasPending = statuses.some((entry) => entry.status === "pending");
+    if (hasPending || hasNotifiedCompletion.current) {
+      return;
+    }
+
+    hasNotifiedCompletion.current = true;
+    onCompleted(statuses);
+  }, [open, onCompleted, statuses]);
 
   const isRunning = statuses.some((entry) => entry.status === "pending");
 
