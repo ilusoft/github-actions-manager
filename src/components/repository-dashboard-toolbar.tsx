@@ -1,14 +1,6 @@
 import { memo } from "react";
 import { RefreshCwIcon } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
 import type { RepositoryViewMode } from "@/types/repository-dashboard";
 
 const VIEW_OPTIONS: { value: RepositoryViewMode; label: string }[] = [
