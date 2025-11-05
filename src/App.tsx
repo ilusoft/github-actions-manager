@@ -1,5 +1,4 @@
 import { Moon, Sun, HelpCircle } from "lucide-react";
-
 import { AccessTokenDialog } from "@/components/access-token-dialog";
 import { OrgRepoSelector } from "@/components/org-repo-selector";
 import { Button } from "@/components/ui/button";
@@ -72,7 +71,9 @@ function App() {
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
-              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              aria-label={`Switch to ${
+                theme === "dark" ? "light" : "dark"
+              } mode`}
             >
               {theme === "dark" ? (
                 <Sun className="h-4 w-4" aria-hidden="true" />
@@ -92,7 +93,7 @@ function App() {
       </main>
       <footer className="border-t">
         <div className="container py-4 text-sm text-muted-foreground">
-          Built with React, Vite, Tailwind CSS, and shadcn/ui.
+          Built by PricerQX engineering team. 2025 © All rights reserved.
         </div>
       </footer>
     </div>
