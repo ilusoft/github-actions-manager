@@ -139,6 +139,7 @@ export function RepositoryWorkflowDashboard({
     selectedRepositories,
     selectedRepositoriesArray,
     handleRepositorySelectionChange,
+    clearSelection: clearSelectedRepositories,
   } = useRepositorySelection();
   const {
     selectedBranches: selectedBranchesMap,
@@ -785,6 +786,7 @@ export function RepositoryWorkflowDashboard({
         <RepositoryDashboardBulkActionsFooter
           count={selectedRepositories.size}
           onSelectAction={handleBulkActionSelect}
+          onClearSelection={clearSelectedRepositories}
         />
       ) : null}
       {viewMode === "branches" ? (
@@ -798,6 +800,7 @@ export function RepositoryWorkflowDashboard({
         <RepositoryDashboardPullRequestFooter
           count={selectedPullRequestCount}
           onSelectAction={handlePullRequestBulkAction}
+          onClearSelection={clearSelectedPullRequests}
           disabled={!organization || selectedPullRequestCount === 0}
         />
       ) : null}
