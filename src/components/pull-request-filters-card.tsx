@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction } from "react";
+import { useCallback, type Dispatch, type SetStateAction } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,10 +15,28 @@ import { type PullRequestViewSettings } from "@/types/repository-dashboard";
 interface PullRequestFiltersCardProps {
   settings: PullRequestViewSettings;
   onChange: Dispatch<SetStateAction<PullRequestViewSettings>>;
-  onPerPageChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-export function PullRequestFiltersCard({ settings, onChange, onPerPageChange }: PullRequestFiltersCardProps) {
+export function PullRequestFiltersCard({ settings, onChange }: PullRequestFiltersCardProps) {
+  const clampPerPage = useCallback((value: number) => {
+    return Math.min(Math.max(value, 1), 100);
+  }, []);
+
+  const handlePerPageChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = Number.parseInt(event.target.value, 10);
+      if (Number.isNaN(raw)) {
+        return;
+      }
+
+      onChange((previous) => ({
+        ...previous,
+        perPage: clampPerPage(raw),
+      }));
+    },
+    [clampPerPage, onChange]
+  );
+
   return (
     <Card className="border-dashed">
       <CardHeader className="pb-2">
@@ -108,7 +126,7 @@ export function PullRequestFiltersCard({ settings, onChange, onPerPageChange }: 
             min={1}
             max={100}
             value={settings.perPage}
-            onChange={onPerPageChange}
+            onChange={handlePerPageChange}
           />
           <p className="text-[10px] text-muted-foreground">
             Controls the GitHub API page size (max 100).

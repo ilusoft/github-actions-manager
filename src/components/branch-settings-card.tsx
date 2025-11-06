@@ -1,4 +1,4 @@
-import { type ChangeEvent, type Dispatch, type SetStateAction } from "react";
+import { useCallback, type Dispatch, type SetStateAction } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,10 +15,28 @@ import { type BranchViewSettings } from "@/types/repository-dashboard";
 interface BranchSettingsCardProps {
   settings: BranchViewSettings;
   onChange: Dispatch<SetStateAction<BranchViewSettings>>;
-  onNumericChange: (field: "perPage" | "limit") => (event: ChangeEvent<HTMLInputElement>) => void;
 }
 
-export function BranchSettingsCard({ settings, onChange, onNumericChange }: BranchSettingsCardProps) {
+export function BranchSettingsCard({ settings, onChange }: BranchSettingsCardProps) {
+  const clampNumeric = useCallback((value: number) => {
+    return Math.min(Math.max(value, 1), 100);
+  }, []);
+
+  const handleNumericChange = useCallback(
+    (field: "perPage" | "limit") => (event: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = Number.parseInt(event.target.value, 10);
+      if (Number.isNaN(raw)) {
+        return;
+      }
+
+      onChange((previous) => ({
+        ...previous,
+        [field]: clampNumeric(raw),
+      }));
+    },
+    [clampNumeric, onChange]
+  );
+
   return (
     <Card className="border-dashed">
       <CardHeader className="pb-2">
@@ -64,7 +82,7 @@ export function BranchSettingsCard({ settings, onChange, onNumericChange }: Bran
             min={1}
             max={100}
             value={settings.perPage}
-            onChange={onNumericChange("perPage")}
+            onChange={handleNumericChange("perPage")}
           />
           <p className="text-[10px] text-muted-foreground">
             Controls the GitHub API page size (max 100).
@@ -83,7 +101,7 @@ export function BranchSettingsCard({ settings, onChange, onNumericChange }: Bran
             min={1}
             max={100}
             value={settings.limit}
-            onChange={onNumericChange("limit")}
+            onChange={handleNumericChange("limit")}
           />
           <p className="text-[10px] text-muted-foreground">
             Caps the number of branches shown per repository.

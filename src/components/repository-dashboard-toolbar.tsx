@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RepositoryViewMode } from "@/types/repository-dashboard";
@@ -14,8 +14,8 @@ interface RepositoryDashboardToolbarProps {
   viewMode: RepositoryViewMode;
   lastRefreshedLabel: string;
   onViewModeChange: (mode: RepositoryViewMode) => void;
-  autoRefreshEnabled: boolean;
-  onAutoRefreshToggle: (nextEnabled: boolean) => void;
+  onRefresh: () => void;
+  autoRefreshIntervalMs?: number;
   autoRefreshAriaLabel?: string;
 }
 
@@ -23,10 +23,32 @@ const RepositoryDashboardToolbarComponent = ({
   viewMode,
   lastRefreshedLabel,
   onViewModeChange,
-  autoRefreshEnabled,
-  onAutoRefreshToggle,
+  onRefresh,
+  autoRefreshIntervalMs = 60_000,
   autoRefreshAriaLabel = "Toggle auto refresh",
 }: RepositoryDashboardToolbarProps) => {
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!autoRefreshEnabled) {
+      return undefined;
+    }
+
+    onRefresh();
+
+    const intervalId = window.setInterval(() => {
+      onRefresh();
+    }, autoRefreshIntervalMs);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [autoRefreshEnabled, autoRefreshIntervalMs, onRefresh]);
+
+  const handleAutoRefreshToggle = () => {
+    setAutoRefreshEnabled((previous) => !previous);
+  };
+
   return (
     <div className="flex items-center gap-3">
       <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-1">
@@ -49,7 +71,7 @@ const RepositoryDashboardToolbarComponent = ({
         type="button"
         variant={autoRefreshEnabled ? "default" : "outline"}
         size="sm"
-        onClick={() => onAutoRefreshToggle(!autoRefreshEnabled)}
+        onClick={handleAutoRefreshToggle}
         aria-pressed={autoRefreshEnabled}
         aria-label={autoRefreshAriaLabel}
         className="flex items-center gap-2"

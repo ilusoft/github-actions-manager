@@ -1,4 +1,4 @@
-import { type DragEventHandler, memo } from "react";
+import { memo, useCallback, useRef, useState, type DragEvent } from "react";
 import { type UseQueryResult } from "@tanstack/react-query";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,14 +6,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { RepositoryDeploymentGrid } from "@/components/repository-deployment-grid";
 import { RepositoryBranchTree } from "@/components/repository-branch-tree";
-import { RepositoryPullRequestTree } from "@/components/repository-pull-request-tree";
 import { filterWorkflowByRunName } from "@/components/workflow-details-dialog";
 import { GithubApiError } from "@/lib/github/client";
 import type { RepositoryBranchRequestOptions } from "@/lib/github/branches";
-import type { RepositoryPullRequestRequestOptions } from "@/lib/github/pull-requests";
 import type { RepositoryWorkflowSummary } from "@/hooks/githubQueries";
 import type { RepositoryViewMode } from "@/types/repository-dashboard";
-import type { PullRequestSelectionEntry } from "@/hooks/use-pull-request-selection";
 
 const STATUS_CLASSES: Record<WorkflowStatus, string> = {
   never_run: "bg-muted text-muted-foreground",
@@ -39,11 +36,7 @@ interface RepositoryDashboardViewContentProps {
   repositories: string[];
   workflowQueries: UseQueryResult<RepositoryWorkflowSummary[], GithubApiError>[];
   runNameFilter: string;
-  draggingRepository: string | null;
-  onDragStart: (repository: string) => DragEventHandler<HTMLDivElement>;
-  onDragEnter: (repository: string) => DragEventHandler<HTMLDivElement>;
-  onDragOver: DragEventHandler<HTMLDivElement>;
-  onDragEnd: () => void;
+  onOrderChange: (nextOrder: string[], options?: { commit?: boolean }) => void;
   selectedRepositories: Set<string>;
   onRepositorySelectionChange: (repository: string, checked: boolean) => void;
   branchOptions?: RepositoryBranchRequestOptions;
@@ -54,14 +47,7 @@ interface RepositoryDashboardViewContentProps {
     branch: string,
     checked: boolean
   ) => void;
-  pullRequestOptions: RepositoryPullRequestRequestOptions;
   onWorkflowSelect: (workflow: RepositoryWorkflowSummary) => void;
-  selectedPullRequestIds?: ReadonlyMap<string, Set<number>>;
-  onPullRequestSelectionChange?: (
-    repository: string,
-    pullRequest: PullRequestSelectionEntry,
-    checked: boolean
-  ) => void;
 }
 
 const RepositoryDashboardViewContentComponent = ({
@@ -70,22 +56,81 @@ const RepositoryDashboardViewContentComponent = ({
   repositories,
   workflowQueries,
   runNameFilter,
-  draggingRepository,
-  onDragStart,
-  onDragEnter,
-  onDragOver,
-  onDragEnd,
+  onOrderChange,
   selectedRepositories,
   onRepositorySelectionChange,
   branchOptions,
   branchNameFilter,
   selectedBranches,
   onBranchSelectionChange,
-  pullRequestOptions,
   onWorkflowSelect,
-  selectedPullRequestIds,
-  onPullRequestSelectionChange,
 }: RepositoryDashboardViewContentProps) => {
+  const [draggingRepository, setDraggingRepository] = useState<string | null>(
+    null
+  );
+  const draggingRef = useRef<string | null>(null);
+  const hasPendingReorderRef = useRef(false);
+
+  const handleDragStart = useCallback(
+    (repository: string) => (event: DragEvent<HTMLDivElement>) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", repository);
+      draggingRef.current = repository;
+      setDraggingRepository(repository);
+    },
+    []
+  );
+
+  const handleDragEnter = useCallback(
+    (targetRepository: string) => (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const active = draggingRef.current;
+      if (!active || active === targetRepository) {
+        return;
+      }
+
+      const activeIndex = repositories.indexOf(active);
+      const targetIndex = repositories.indexOf(targetRepository);
+      if (activeIndex === -1 || targetIndex === -1) {
+        return;
+      }
+
+      const next = [...repositories];
+      next.splice(activeIndex, 1);
+      next.splice(targetIndex, 0, active);
+
+      let changed = false;
+      for (let index = 0; index < next.length; index += 1) {
+        if (next[index] !== repositories[index]) {
+          changed = true;
+          break;
+        }
+      }
+
+      if (!changed) {
+        return;
+      }
+
+      hasPendingReorderRef.current = true;
+      onOrderChange(next);
+    },
+    [onOrderChange, repositories]
+  );
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    draggingRef.current = null;
+    setDraggingRepository(null);
+
+    if (hasPendingReorderRef.current) {
+      hasPendingReorderRef.current = false;
+      onOrderChange(repositories, { commit: true });
+    }
+  }, [onOrderChange, repositories]);
+
   if (viewMode === "deployments") {
     return (
       <RepositoryDeploymentGrid
@@ -110,18 +155,6 @@ const RepositoryDashboardViewContentComponent = ({
     );
   }
 
-  if (viewMode === "pullRequests") {
-    return (
-      <RepositoryPullRequestTree
-        organization={organization}
-        repositories={repositories}
-        options={pullRequestOptions}
-        selectedPullRequestIds={selectedPullRequestIds}
-        onPullRequestSelectionChange={onPullRequestSelectionChange}
-      />
-    );
-  }
-
   return (
     <div className={WORKFLOW_GRID_CLASSES}>
       {repositories.map((repository, index) => {
@@ -135,10 +168,10 @@ const RepositoryDashboardViewContentComponent = ({
               draggingRepository === repository ? "opacity-80" : ""
             )}
             draggable={repositories.length > 1}
-            onDragStart={onDragStart(repository)}
-            onDragEnter={onDragEnter(repository)}
-            onDragOver={onDragOver}
-            onDragEnd={onDragEnd}
+            onDragStart={handleDragStart(repository)}
+            onDragEnter={handleDragEnter(repository)}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
           >
             <CardHeader className="flex flex-row items-start justify-between gap-3">
               <CardTitle className="truncate" title={repository}>

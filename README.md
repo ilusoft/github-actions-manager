@@ -14,6 +14,33 @@ React + Vite application for exploring GitHub Actions workflows across repositor
 - **Data & GitHub integrations**: TanStack Query orchestrating GitHub REST calls, custom API client in `src/lib/github/client.ts`, `js-yaml` for parsing workflow files, and helper modules under `src/lib/github/`.
 - **Tooling**: ESLint 9 (flat config in `eslint.config.js`), PostCSS, Vite dev server & build pipeline.
 
+### Core Runtime Dependencies
+
+| Package | Version | Notes |
+| --- | --- | --- |
+| react / react-dom | ^19.1.1 | Concurrent features available; keep hooks pure. |
+| @tanstack/react-query | ^5.90.5 | Centralized query client; follow stale-time patterns defined in hooks. |
+| @radix-ui/react-* | ^1.x-^2.x | Used for accessible primitives; do not wrap with non-semantic elements. |
+| lucide-react | ^0.546.0 | Icon glyphs. |
+| tailwindcss / tailwindcss-animate | ^3.4.x / ^1.0.7 | Utility-first styling, animation helpers. |
+| class-variance-authority / clsx / tailwind-merge | ^0.7 / ^2.1 / ^3.3 | Class composition & dedupe. |
+| js-yaml | ^4.1.0 | Parse workflow YAML when dispatching runs. |
+
+### Tooling & Developer Dependencies
+
+| Package | Version | Notes |
+| --- | --- | --- |
+| vite | ^7.1.7 | Dev server & bundler. |
+| @vitejs/plugin-react | ^5.0.4 | SWC-based transform. |
+| typescript | ~5.9.3 | Keep `tsconfig.app.json` consistent with Vite, React 19. |
+| eslint / @eslint/js | ^9.36.0 | Flat config; run `npm run lint`. |
+| typescript-eslint | ^8.45.0 | Coordinates ESLint with TS 5.9. |
+| @types/react / @types/react-dom | ^19.1.x | Ambient types for new JSX runtime. |
+| tailwindcss / postcss / autoprefixer | ^3.4 / ^8.5 / ^10.4 | Build pipeline. |
+| shadcn | ^3.4.2 | CLI for generating design system components. |
+
+> **Upgrades:** When bumping any dependency, update this table and capture breaking changes or migration steps in the "Maintenance Notes" section.
+
 ## Getting Started
 
 - **Install dependencies**: `npm install`
@@ -76,18 +103,19 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 
 ## Project Structure
 
-- **`src/components/ui/`**: shadcn/ui components (e.g., `button.tsx`). Always generate via CLI.
-- **`src/components/`**: custom application components (composed from `ui/`).
-- **`src/components/bulk-workflow-run-dialog.tsx`**: Multi-select workflow dispatch dialog with aggregated input handling, caching, and real-time progress tracking.
-- **`src/components/repository-dashboard-toolbar.tsx`**: View mode tabs with an auto-refresh toggle that drives 60-second background refresh intervals.
-- **`src/components/repository-pull-request-tree.tsx`**: Repository grouped PR listing with mergeability badges, selection handling, and memoised TanStack Query integration.
-- **`src/components/repository-deployment-grid.tsx`**: Environment grid that visualizes the latest deployment per repository/environment, supports column customization, and links to GitHub history pages.
-- **`src/lib/`**: utilities such as `utils.ts` exposing `cn()`.
-- **`src/hooks/`**: application hooks (e.g., `useGithubAccessToken()` for token state, `useOrganizationRepositorySelection()` for monitoring scope persistence).
-- **`src/hooks/useDeploymentGridPreferences.ts`**: Persists deployment grid column order and visibility in `localStorage` and syncs changes across tabs.
+- **`src/components/ui/`**: shadcn/ui primitives (e.g., `button.tsx`). Always generate via CLI to keep tokens in sync.
+- **`src/components/`**: feature components composed from the UI library. Highlights:
+  - `repository-workflow-dashboard.tsx`: orchestrates view mode, filters, and delegates rendering to the appropriate dashboard view.
+  - `repository-dashboard-repository-view.tsx`: owns workflows/deployments/branches selection, bulk dialogs, and workflow details while rendering shared content via `repository-dashboard-view-content.tsx`.
+  - `repository-dashboard-pull-request-view.tsx`: encapsulates pull request selection, bulk merge/review dialogs, and query invalidation.
+  - `repository-dashboard-toolbar.tsx`: surface view switching and auto-refresh toggle logic.
+  - `repository-pull-request-tree.tsx` / `repository-deployment-grid.tsx`: domain-specific trees and grids used inside the views.
+  - `bulk-*-dialog.tsx`: modal workflows for branch creation/deletion, PR merge/review, and workflow dispatch.
+- **`src/lib/`**: shared utilities such as `utils.ts` (`cn()` helper) and GitHub client helpers.
+- **`src/hooks/`**: application hooks (e.g., `useGithubAccessToken`, `useRepositorySelection`, `useWorkflowDashboardData`).
 - **`components.json`**: shadcn/ui CLI configuration (style, aliases, registry).
 - **`tailwind.config.ts`**: Tailwind theme tokens, container defaults, animation primitives.
-- **`tsconfig.app.json` & `tsconfig.json`**: TypeScript compiler options, `@/*` path alias.
+- **`tsconfig.app.json` & `tsconfig.json`**: TypeScript compiler options and the `@/*` path alias.
 - **`public/`**: static assets served as-is.
 
 ## Architecture & Conventions
@@ -101,7 +129,8 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 - **Access Tokens**: `useGithubAccessToken()` stores only a `hasToken` flag in React state while persisting the actual PAT in `localStorage`. Tokens are write-only (never surfaced back to the UI). Clearing the token removes it from storage and broadcasts a custom event for cross-tab sync.
 - **Monitoring Scope**: `OrgRepoSelector` with `useOrganizationRepositorySelection()` captures the target organization and repositories. Changes persist in `localStorage`, support toggling per-repo monitoring, and offer global reset actions. Treat this as the single source of truth for downstream data fetching.
 - **Deployment visibility**: `RepositoryDeploymentGrid` composes TanStack Query results with persisted preferences (`useDeploymentGridPreferences`) to show environment health at-a-glance, ignoring `inactive` statuses so long-lived environments stay meaningful.
-- **Dashboard orchestration**: `RepositoryWorkflowDashboard` coordinates repository-level workflow summaries, bulk dialogs (`bulk-branch-dialog`, `bulk-pr-dialog`, `bulk-workflow-run-dialog`), and detailed views (`workflow-details-dialog`). The bulk workflow dialog supports multi-select workflow dispatch with aggregated input handling and caching.
+- **Dashboard orchestration**: `RepositoryWorkflowDashboard` persists view mode, filters, and repository order, and renders the appropriate view component. Non–pull request modes are delegated to `RepositoryDashboardRepositoryView`; the pull request mode is handled by `RepositoryDashboardPullRequestView`.
+- **View encapsulation pattern**: Each dashboard view owns its selection hooks, dialog state, and footer logic (`RepositoryDashboardRepositoryView`, `RepositoryDashboardPullRequestView`). Parent components only provide high-level filters, repository lists, and refresh callbacks.
 - **Auto refresh pattern**: `RepositoryDashboardToolbar` exposes a push/pull toggle that stores auto-refresh state locally, triggers an immediate refresh when enabled, and sets a single interval in `useEffect` to avoid duplicate timers.
 - **Mergeability enrichment**: `fetchRepositoryPullRequests` hydrates open PRs with detail responses (mergeable flags and `mergeable_state`) so UI components can render actionable badges.
 - **Per-workflow input hygiene**: Workflow dispatches build payloads per repository/workflow using cached definitions to avoid sending extraneous keys.
@@ -124,6 +153,31 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 - **Effect-scoped intervals**: When introducing auto-refresh, declare intervals inside `useEffect`, run an immediate refresh to seed state, and always clear the interval in the cleanup function.
 - **Per-item status tracking**: Store action statuses in keyed maps/arrays so UI surfaces unique progress indicators (e.g., bulk workflow dispatch, bulk PR merges).
 - **Viewport constrained dialogs**: Bulk dialogs share the same 80vh layout recipe (fixed header & footer, scrollable middle region) to guarantee consistent interaction patterns.
+- **View-specific state ownership**: When adding a new dashboard mode, create a dedicated view component that holds selection state, dialog toggles, and query invalidation logic. Parent components should not manage per-view handlers.
+- **Repository selection reuse**: Use `useRepositorySelection`, `useBranchSelection`, or `usePullRequestSelection` within the view components that actually render the corresponding entities. Call `clearSelection` when closing dialogs or changing modes to avoid stale state.
+
+### Adding New Features
+
+1. **Pick the right layer**
+   - UI primitives belong in `src/components/ui/` (generated via shadcn CLI).
+   - Feature-specific views live under `src/components/`, grouped by dashboard domain.
+   - Shared hooks live in `src/hooks/`; prefer colocated hooks if usage is limited to a single feature.
+
+2. **Encapsulate per-view logic**
+   - Create a `RepositoryDashboard<Feature>View` component for new dashboard modes.
+   - Move selection hooks, bulk dialogs, and footers into that component so the dashboard stays focused on orchestration.
+
+3. **Extend data fetching**
+   - Add new React Query hooks in `src/hooks/githubQueries.ts` or a feature-specific hook module.
+   - Define query keys consistently; reuse existing patterns for invalidation.
+
+4. **Update documentation & tooling**
+   - Record dependency changes (package upgrades, new libraries) in the tables above and add migration notes under “Maintenance Notes”.
+   - Document new patterns in this section so future contributors can replicate the structure.
+
+5. **Quality checks**
+   - Run `npm run lint` and, once introduced, the testing suite before merging.
+   - Validate view-specific query invalidation and auto-refresh behaviour manually.
 
 ### Components Dependency Diagram
 
@@ -138,27 +192,31 @@ graph TD
   OrgRepoSelector --> useOrganizationRepositorySelection
 
   RepositoryWorkflowDashboard --> RepositoryDashboardToolbar
-  RepositoryWorkflowDashboard --> RepositoryDashboardViewContent
-  RepositoryWorkflowDashboard --> WorkflowFiltersCard
-  RepositoryWorkflowDashboard --> BranchSettingsCard
+  RepositoryWorkflowDashboard --> RepositoryDashboardRepositoryView
+  RepositoryWorkflowDashboard --> RepositoryDashboardPullRequestView
   RepositoryWorkflowDashboard --> PullRequestFiltersCard
-  RepositoryWorkflowDashboard --> BulkBranchDialog
-  RepositoryWorkflowDashboard --> BulkBranchDeleteDialog
-  RepositoryWorkflowDashboard --> BulkPrDialog
-  RepositoryWorkflowDashboard --> BulkWorkflowRunDialog
-  RepositoryWorkflowDashboard --> WorkflowDetailsDialog
-  RepositoryWorkflowDashboard --> useWorkflowDashboardData
 
   RepositoryDashboardToolbar --> AutoRefreshToggle[Auto-refresh toggle]
 
+  RepositoryDashboardRepositoryView --> RepositoryDashboardViewContent
+  RepositoryDashboardRepositoryView --> WorkflowDetailsDialog
+  RepositoryDashboardRepositoryView --> BulkBranchDialog
+  RepositoryDashboardRepositoryView --> BulkBranchDeleteDialog
+  RepositoryDashboardRepositoryView --> BulkPrDialog
+  RepositoryDashboardRepositoryView --> BulkWorkflowRunDialog
+  RepositoryDashboardRepositoryView --> useRepositorySelection
+  RepositoryDashboardRepositoryView --> useBranchSelection
+  RepositoryDashboardRepositoryView --> useWorkflowDashboardData
+
   RepositoryDashboardViewContent --> RepositoryDeploymentGrid
   RepositoryDashboardViewContent --> RepositoryBranchTree
-  RepositoryDashboardViewContent --> RepositoryPullRequestTree
-  RepositoryDashboardViewContent --> WorkflowPill[Workflow pill list]
+  RepositoryDashboardViewContent --> WorkflowSummaryList[Workflow summary list]
 
-  RepositoryDeploymentGrid --> fetchRepositoryDeployments
-  RepositoryBranchTree --> fetchRepositoryBranches
-  RepositoryPullRequestTree --> fetchRepositoryPullRequests
+  RepositoryDashboardPullRequestView --> RepositoryPullRequestTree
+  RepositoryDashboardPullRequestView --> BulkPullRequestMergeDialog
+  RepositoryDashboardPullRequestView --> BulkPRReviewDialog
+  RepositoryDashboardPullRequestView --> RepositoryDashboardPullRequestFooter
+  RepositoryDashboardPullRequestView --> usePullRequestSelection
 
   useWorkflowDashboardData --> fetchRepositoryWorkflows
   useWorkflowDashboardData --> fetchRepositoryDeployments
@@ -173,15 +231,16 @@ graph TD
   BulkPrDialog --> createRepositoryPullRequest
   BulkWorkflowRunDialog --> fetchWorkflowInputs
   BulkWorkflowRunDialog --> dispatchWorkflow
+  BulkPullRequestMergeDialog --> mergePullRequests
+  BulkPRReviewDialog --> submitPullRequestReviews
   dispatchWorkflow --> fetchGithubJson
   createRepositoryBranch --> fetchGithubJson
   deleteRepositoryBranch --> fetchGithubJson
   createRepositoryPullRequest --> fetchGithubJson
   fetchWorkflowInputs --> fetchGithubContent
-  WorkflowDetailsDialog --> filterWorkflowByRunName
-  AutoRefreshToggle --> handleRefreshInterval
-
-  fetchGithubJson --> GithubAPI[(GitHub REST API)]
+  mergePullRequests --> GithubAPI[(GitHub REST API)]
+  submitPullRequestReviews --> GithubAPI
+  fetchGithubJson --> GithubAPI
   fetchGithubContent --> GithubAPI
 ```
 
@@ -209,10 +268,9 @@ graph TD
 - Any new linting or formatting rules must be described here along with expected CI checks.
 - Update this README whenever we introduce tooling, architectural patterns, or operational processes.
 
-### Recent Changes (October 2025)
+### Recent Changes (November 2025)
 
-- **Auto refresh toolbar**: Added an auto-refresh toggle to `RepositoryDashboardToolbar` that triggers minute-based refresh intervals and indicates the active state.
-- **Mergeability indicators**: `fetchRepositoryPullRequests` now fetches detailed PR metadata so `RepositoryPullRequestTree` can render mergeable/conflict badges.
-- **Bulk workflow hardening**: The run dialog filters per-workflow inputs, persists cached definitions, and shares the 80vh layout used by other bulk dialogs.
-- **Selection stability**: `selectedWorkflows` derives from memoised data + refs to avoid infinite render loops while keeping progress tracking accurate.
-- **UI parity tweaks**: Adjusted bulk dialogs to share consistent header/footer sizing and ensured progress panes remain scrollable.
+- **Dashboard view encapsulation**: Split repository and pull request dashboard modes into dedicated components owning their selection and dialog state, reducing `RepositoryWorkflowDashboard` to orchestration only.
+- **Bulk footer deselect controls**: Added deselect-all checkboxes to repository, branch, and pull request bulk footers for quick reset of selections.
+- **Auto refresh toolbar**: Toolbar now manages its own interval state and takes a refresh callback from the dashboard.
+- **Dependency table**: Documented current runtime and tooling dependency versions for easier audits.
