@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,8 +63,9 @@ export function OrgRepoSelector() {
     organization: groupsOrg,
     groups,
     getEnabledRepositories,
-    toggleGroupEnabled,
   } = useRepositoryGroups({ externalOrganization: organization });
+
+  void groups; // TODO: use toggleGroupEnabled if needed
 
   // Track previous group repos to detect removals
   const prevGroupReposRef = useRef<Set<string>>(new Set());

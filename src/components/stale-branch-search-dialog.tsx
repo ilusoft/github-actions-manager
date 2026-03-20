@@ -28,7 +28,6 @@ import {
   Calendar,
   Trash2,
   AlertTriangle,
-  X,
   Download,
   Filter,
 } from "lucide-react";

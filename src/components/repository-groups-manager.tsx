@@ -47,9 +47,11 @@ interface RepositoryGroupsManagerProps {
 export function RepositoryGroupsManager({
   organization,
   availableRepositories,
-  onAddRepository,
-  onRemoveRepository,
+  onAddRepository: _onAddRepository,
+  onRemoveRepository: _onRemoveRepository,
 }: RepositoryGroupsManagerProps) {
+  void _onAddRepository;
+  void _onRemoveRepository;
   const {
     groups,
     createGroup,

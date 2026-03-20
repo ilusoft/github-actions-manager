@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -32,12 +31,15 @@ interface RegexPresetSelectorProps {
 }
 
 export function RegexPresetSelector({
-  searchPattern,
-  replaceWith,
+  searchPattern: _searchPattern,
+  replaceWith: _replaceWith,
   sampleContent,
   onApplyPreset,
   disabled = false,
 }: RegexPresetSelectorProps) {
+  // Note: searchPattern and replaceWith can be used to show current values in future
+  void _searchPattern;
+  void _replaceWith;
   const [isOpen, setIsOpen] = useState(false);
   const [presets, setPresets] = useState<RegexPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<RegexPreset | null>(
@@ -74,7 +76,7 @@ export function RegexPresetSelector({
   const handleCreatePreset = useCallback(() => {
     if (!formName.trim() || !formSearchPattern.trim()) return;
 
-    const newPreset = savePreset({
+    savePreset({
       name: formName,
       description: formDescription,
       searchPattern: formSearchPattern,
