@@ -30,6 +30,7 @@ import {
 import { RepositoryDashboardBranchFooter } from "@/components/repository-dashboard-branch-footer";
 import { WorkflowFiltersCard } from "@/components/workflow-filters-card";
 import { BranchSettingsCard } from "@/components/branch-settings-card";
+import { StaleBranchSearchDialog } from "@/components/stale-branch-search-dialog";
 import {
   type BranchViewSettings,
   type RepositoryViewMode,
@@ -98,17 +99,18 @@ const RepositoryDashboardRepositoryViewComponent = ({
   const [isBulkPrDialogOpen, setIsBulkPrDialogOpen] = useState(false);
   const [isBulkWorkflowDialogOpen, setIsBulkWorkflowDialogOpen] =
     useState(false);
-  const [activeWorkflow, setActiveWorkflow] = useState<
-    RepositoryWorkflowSummary | null
-  >(null);
+  const [isStaleBranchSearchDialogOpen, setIsStaleBranchSearchDialogOpen] =
+    useState(false);
+  const [activeWorkflow, setActiveWorkflow] =
+    useState<RepositoryWorkflowSummary | null>(null);
 
   const branchQueryOptions = useMemo(() => {
     const protectedFilter =
       branchSettings.visibility === "protected"
         ? true
         : branchSettings.visibility === "unprotected"
-        ? false
-        : undefined;
+          ? false
+          : undefined;
 
     return {
       perPage: branchSettings.perPage,
@@ -160,7 +162,7 @@ const RepositoryDashboardRepositoryViewComponent = ({
         const selected = Array.from(selectedRepositories);
         const { workflows, error } = createBulkWorkflowOptions(
           selected,
-          workflowSummariesByRepo
+          workflowSummariesByRepo,
         );
 
         setBulkWorkflowState({ workflows, error });
@@ -168,7 +170,7 @@ const RepositoryDashboardRepositoryViewComponent = ({
         return;
       }
     },
-    [selectedRepositories, workflowSummariesByRepo]
+    [selectedRepositories, workflowSummariesByRepo],
   );
 
   const handleBranchDeleteResult = useCallback(
@@ -186,23 +188,16 @@ const RepositoryDashboardRepositoryViewComponent = ({
       }
 
       const reposToRefresh = new Set(
-        result.deleted.map((entry: BranchDeletionTarget) => entry.repository)
+        result.deleted.map((entry: BranchDeletionTarget) => entry.repository),
       );
 
       reposToRefresh.forEach((repo) => {
         queryClient.invalidateQueries({
-          queryKey: [
-            "github",
-            "org",
-            organization,
-            "repo",
-            repo,
-            "branches",
-          ],
+          queryKey: ["github", "org", organization, "repo", repo, "branches"],
         });
       });
     },
-    [organization, queryClient, handleBranchSelectionChange]
+    [organization, queryClient, handleBranchSelectionChange],
   );
 
   const handleWorkflowSelect = useCallback(
@@ -210,13 +205,34 @@ const RepositoryDashboardRepositoryViewComponent = ({
       setActiveWorkflow(workflow);
       onWorkflowSelect?.(workflow);
     },
-    [onWorkflowSelect]
+    [onWorkflowSelect],
   );
 
   const handleWorkflowDialogClose = useCallback(() => {
     setActiveWorkflow(null);
     onWorkflowSelect?.(null);
   }, [onWorkflowSelect]);
+
+  // Handler for stale branch search completion
+  const handleStaleBranchSearchComplete = useCallback(
+    (_result: {
+      branches: Array<{
+        repository: string;
+        branchName: string;
+        branchUrl?: string;
+        author?: string;
+        lastCommitDate?: string;
+        lastCommitSha?: string;
+        baseBranch?: string;
+        aheadBy?: number;
+        behindBy?: number;
+      }>;
+    }) => {
+      // Deletion is now handled within the stale branch search dialog
+      // No need to auto-select branches or store found branches in settings
+    },
+    [],
+  );
 
   return (
     <>
@@ -257,6 +273,13 @@ const RepositoryDashboardRepositoryViewComponent = ({
         isLoadingWorkflows={isAnyWorkflowLoading}
         loadError={bulkWorkflowState.error}
       />
+      <StaleBranchSearchDialog
+        organization={organization}
+        repositories={repositories}
+        open={isStaleBranchSearchDialogOpen}
+        onOpenChange={setIsStaleBranchSearchDialogOpen}
+        onSearchComplete={handleStaleBranchSearchComplete}
+      />
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -272,6 +295,7 @@ const RepositoryDashboardRepositoryViewComponent = ({
           <BranchSettingsCard
             settings={branchSettings}
             onChange={onBranchSettingsChange}
+            onSearchStaleBranches={() => setIsStaleBranchSearchDialogOpen(true)}
           />
         ) : null}
         <RepositoryDashboardViewContent
@@ -306,11 +330,11 @@ const RepositoryDashboardRepositoryViewComponent = ({
       ) : null}
     </>
   );
-}
+};
 
 function createBulkWorkflowOptions(
   selected: string[],
-  summariesByRepository: Map<string, RepositoryWorkflowSummary[]>
+  summariesByRepository: Map<string, RepositoryWorkflowSummary[]>,
 ): { workflows: BulkWorkflowOption[]; error: string | null } {
   const options: BulkWorkflowOption[] = [];
 
@@ -346,11 +370,11 @@ function createBulkWorkflowOptions(
     error: hasMissingData
       ? "Workflows are still loading for some repositories. Please wait and try again."
       : sorted.length === 0
-      ? "No workflows were found in the selected repositories."
-      : null,
+        ? "No workflows were found in the selected repositories."
+        : null,
   };
 }
 
 export const RepositoryDashboardRepositoryView = memo(
-  RepositoryDashboardRepositoryViewComponent
+  RepositoryDashboardRepositoryViewComponent,
 );

@@ -16,28 +16,28 @@ React + Vite application for exploring GitHub Actions workflows across repositor
 
 ### Core Runtime Dependencies
 
-| Package | Version | Notes |
-| --- | --- | --- |
-| react / react-dom | ^19.1.1 | Concurrent features available; keep hooks pure. |
-| @tanstack/react-query | ^5.90.5 | Centralized query client; follow stale-time patterns defined in hooks. |
-| @radix-ui/react-* | ^1.x-^2.x | Used for accessible primitives; do not wrap with non-semantic elements. |
-| lucide-react | ^0.546.0 | Icon glyphs. |
-| tailwindcss / tailwindcss-animate | ^3.4.x / ^1.0.7 | Utility-first styling, animation helpers. |
-| class-variance-authority / clsx / tailwind-merge | ^0.7 / ^2.1 / ^3.3 | Class composition & dedupe. |
-| js-yaml | ^4.1.0 | Parse workflow YAML when dispatching runs. |
+| Package                                          | Version            | Notes                                                                   |
+| ------------------------------------------------ | ------------------ | ----------------------------------------------------------------------- |
+| react / react-dom                                | ^19.1.1            | Concurrent features available; keep hooks pure.                         |
+| @tanstack/react-query                            | ^5.90.5            | Centralized query client; follow stale-time patterns defined in hooks.  |
+| @radix-ui/react-\*                               | ^1.x-^2.x          | Used for accessible primitives; do not wrap with non-semantic elements. |
+| lucide-react                                     | ^0.546.0           | Icon glyphs.                                                            |
+| tailwindcss / tailwindcss-animate                | ^3.4.x / ^1.0.7    | Utility-first styling, animation helpers.                               |
+| class-variance-authority / clsx / tailwind-merge | ^0.7 / ^2.1 / ^3.3 | Class composition & dedupe.                                             |
+| js-yaml                                          | ^4.1.0             | Parse workflow YAML when dispatching runs.                              |
 
 ### Tooling & Developer Dependencies
 
-| Package | Version | Notes |
-| --- | --- | --- |
-| vite | ^7.1.7 | Dev server & bundler. |
-| @vitejs/plugin-react | ^5.0.4 | SWC-based transform. |
-| typescript | ~5.9.3 | Keep `tsconfig.app.json` consistent with Vite, React 19. |
-| eslint / @eslint/js | ^9.36.0 | Flat config; run `npm run lint`. |
-| typescript-eslint | ^8.45.0 | Coordinates ESLint with TS 5.9. |
-| @types/react / @types/react-dom | ^19.1.x | Ambient types for new JSX runtime. |
-| tailwindcss / postcss / autoprefixer | ^3.4 / ^8.5 / ^10.4 | Build pipeline. |
-| shadcn | ^3.4.2 | CLI for generating design system components. |
+| Package                              | Version             | Notes                                                    |
+| ------------------------------------ | ------------------- | -------------------------------------------------------- |
+| vite                                 | ^7.1.7              | Dev server & bundler.                                    |
+| @vitejs/plugin-react                 | ^5.0.4              | SWC-based transform.                                     |
+| typescript                           | ~5.9.3              | Keep `tsconfig.app.json` consistent with Vite, React 19. |
+| eslint / @eslint/js                  | ^9.36.0             | Flat config; run `npm run lint`.                         |
+| typescript-eslint                    | ^8.45.0             | Coordinates ESLint with TS 5.9.                          |
+| @types/react / @types/react-dom      | ^19.1.x             | Ambient types for new JSX runtime.                       |
+| tailwindcss / postcss / autoprefixer | ^3.4 / ^8.5 / ^10.4 | Build pipeline.                                          |
+| shadcn                               | ^3.4.2              | CLI for generating design system components.             |
 
 > **Upgrades:** When bumping any dependency, update this table and capture breaking changes or migration steps in the "Maintenance Notes" section.
 
@@ -53,13 +53,11 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 ## Using the Application
 
 1. **Authenticate with GitHub**
-
    - Open the _Access Token_ dialog from the header to provide a personal access token (PAT).
    - Only the presence of a token is stored in React state; the raw token persists in `localStorage` and is never shown in the UI.
    - Clearing the token invalidates cached GitHub queries so the UI stays consistent across tabs.
 
 2. **Choose monitoring scope**
-
    - The _Organization & Repository Selector_ loads organizations tied to the PAT and lists repositories for the selected organization.
    - Repositories persist in `localStorage`, and you can enable/disable entries, filter by name, reorder the list, or reset the scope entirely.
 
@@ -250,6 +248,33 @@ graph TD
 - All new components from shadcn/ui must be added via CLI: `npx shadcn@latest add <component>`. The CLI keeps `components.json` and Tailwind tokens synchronized.
 - Dark mode toggles via the `class` strategy; apply the `dark` class on `<html>` (future layout component should manage this).
 
+## Stale Branch Detection & Prune Feature (Planned)
+
+### Overview
+
+Add ability to detect stale branches (merged PRs) and bulk prune old branches.
+
+### Implementation Plan
+
+1. **Stale Detection**: Use GitHub Compare API (`/repos/{owner}/{repo}/compare/{base}...{head}`) to check if branch is ahead/behind base branch
+   - If branch is NOT ahead of base → merged (stale)
+   - If branch IS ahead → still active
+2. **Branch Details**: Get from GitHub Branch API:
+   - Branch author/committer
+   - Last commit date
+3. **API Rate Limiting**: Serialize calls with small delays to prevent burst
+4. **UI Changes**:
+   - Add "Search stale branches" option to visibility dropdown
+   - Popup for user filter and date range
+   - Progress dialog during search
+   - Display found stale branches in branch view
+
+### GitHub API Endpoints
+
+- `GET /repos/{owner}/{repo}/compare/{base}...{head}` - Compare branches
+- `GET /repos/{owner}/{repo}/branches/{branch}` - Branch details
+- `DELETE /repos/{owner}/{repo}/git/refs/heads/{branch}` - Delete branch (existing)
+
 ## GitHub Integration Roadmap
 
 - **Authentication**: Personal access token (PAT) for now. Future tasks will introduce OAuth App flow and secure token storage.
@@ -267,6 +292,16 @@ graph TD
 - Keep dependencies up to date. When bumping major versions, capture breaking changes in this file.
 - Any new linting or formatting rules must be described here along with expected CI checks.
 - Update this README whenever we introduce tooling, architectural patterns, or operational processes.
+
+### Recent Changes (March 2026)
+
+- **Stale Branch Detection & Prune Feature**: Added ability to detect and prune stale branches (merged PRs) from the Branches tab.
+  - Uses GitHub Compare API to check if a branch is ahead/behind the base branch
+  - Filter by user (specific user or ALL users)
+  - Time-based pruning (older than X days from last commit)
+  - Rate-limited API calls (serialized with delays) to prevent GitHub API limits
+  - Progress dialog during search
+  - Results auto-select branches for bulk deletion
 
 ### Recent Changes (November 2025)
 

@@ -33,7 +33,7 @@ interface RepositoryBranchTreeProps {
   onBranchSelectionChange?: (
     repository: string,
     branch: string,
-    checked: boolean
+    checked: boolean,
   ) => void;
 }
 
@@ -69,11 +69,11 @@ export function RepositoryBranchTree({
 }: RepositoryBranchTreeProps) {
   const normalizedRepositories = useMemo(
     () => repositories.filter(Boolean),
-    [repositories]
+    [repositories],
   );
   const normalizedNameFilter = useMemo(
     () => nameFilter?.trim().toLowerCase() ?? "",
-    [nameFilter]
+    [nameFilter],
   );
 
   const emptySelectionMapRef = useRef<Map<string, Set<string>> | null>(null);
@@ -84,7 +84,7 @@ export function RepositoryBranchTree({
 
   const previousRepositoriesRef = useRef<string[]>(normalizedRepositories);
   const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(normalizedRepositories)
+    () => new Set(normalizedRepositories),
   );
 
   useEffect(() => {
@@ -152,7 +152,7 @@ interface RepositoryBranchSectionProps {
   onBranchSelectionChange?: (
     repository: string,
     branch: string,
-    checked: boolean
+    checked: boolean,
   ) => void;
 }
 
@@ -174,7 +174,7 @@ function RepositoryBranchSection({
     }
 
     return branches.filter((branch) =>
-      branch.name.toLowerCase().includes(nameFilter)
+      branch.name.toLowerCase().includes(nameFilter),
     );
   }, [branches, nameFilter]);
   const branchCount = filteredBranches.length;
@@ -244,11 +244,11 @@ function RepositoryBranchSection({
               fetchRepositoryBranchDetails(
                 organization,
                 repository,
-                branch.name
+                branch.name,
               ),
           });
           return [branch.name, detail] as const;
-        })
+        }),
       );
 
       setBranchDetails(new Map(entries));
@@ -402,7 +402,7 @@ function RepositoryBranchSection({
                             onBranchSelectionChange?.(
                               repository,
                               branch.name,
-                              Boolean(checked)
+                              Boolean(checked),
                             )
                           }
                           aria-label={`Select branch ${branch.name} from ${repository}`}
@@ -419,18 +419,18 @@ function RepositoryBranchSection({
                             >
                               {branch.name}
                             </a>
-                            {showDetails && details?.authoredDate ? (
+                            {branch.latestCommitDate ? (
                               <span className="text-xs text-muted-foreground">
                                 Latest commit&nbsp;
-                                {formatCommitDate(details.authoredDate)}
+                                {formatCommitDate(branch.latestCommitDate)}
                               </span>
                             ) : null}
                           </div>
-                          {showDetails && details?.author ? (
+                          {branch.latestCommitAuthor ? (
                             <div className="text-xs text-muted-foreground">
                               Author:{" "}
                               <span className="font-medium text-foreground">
-                                {details.author}
+                                {branch.latestCommitAuthor}
                               </span>
                             </div>
                           ) : null}

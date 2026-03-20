@@ -17,6 +17,23 @@ export type BranchViewSettings = {
   perPage: number;
   limit: number;
   name: string;
+  // Stale branch detection settings
+  staleSearch?: {
+    baseBranch: string;
+    authorFilter?: string;
+    daysOldThreshold: number;
+    foundBranches?: {
+      repository: string;
+      branchName: string;
+      branchUrl: string;
+      author?: string;
+      lastCommitDate?: string;
+      lastCommitSha: string;
+      baseBranch: string;
+      aheadBy: number;
+      behindBy: number;
+    }[];
+  };
 };
 
 export type PullRequestViewSettings = {

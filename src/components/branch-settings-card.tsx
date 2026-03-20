@@ -1,5 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,37 +12,92 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type BranchViewSettings } from "@/types/repository-dashboard";
+import { Search, X } from "lucide-react";
 
 interface BranchSettingsCardProps {
   settings: BranchViewSettings;
   onChange: Dispatch<SetStateAction<BranchViewSettings>>;
+  onSearchStaleBranches?: () => void;
 }
 
-export function BranchSettingsCard({ settings, onChange }: BranchSettingsCardProps) {
+export function BranchSettingsCard({
+  settings,
+  onChange,
+  onSearchStaleBranches,
+}: BranchSettingsCardProps) {
   const clampNumeric = useCallback((value: number) => {
     return Math.min(Math.max(value, 1), 100);
   }, []);
 
   const handleNumericChange = useCallback(
-    (field: "perPage" | "limit") => (event: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = Number.parseInt(event.target.value, 10);
-      if (Number.isNaN(raw)) {
-        return;
-      }
+    (field: "perPage" | "limit") =>
+      (event: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = Number.parseInt(event.target.value, 10);
+        if (Number.isNaN(raw)) {
+          return;
+        }
 
-      onChange((previous) => ({
-        ...previous,
-        [field]: clampNumeric(raw),
-      }));
-    },
-    [clampNumeric, onChange]
+        onChange((previous) => ({
+          ...previous,
+          [field]: clampNumeric(raw),
+        }));
+      },
+    [clampNumeric, onChange],
   );
+
+  const staleResults = settings.staleSearch?.foundBranches;
+  const staleCount = staleResults?.length ?? 0;
+  const hasStaleResults = staleCount > 0;
+
+  const handleClearStaleResults = useCallback(() => {
+    onChange((previous) => ({
+      ...previous,
+      staleSearch: undefined,
+    }));
+  }, [onChange]);
 
   return (
     <Card className="border-dashed">
-      <CardHeader className="pb-2">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-base">Branch settings</CardTitle>
+        {onSearchStaleBranches && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onSearchStaleBranches}
+            className="gap-2"
+          >
+            <Search className="h-4 w-4" />
+            Search Stale Branches
+          </Button>
+        )}
       </CardHeader>
+
+      {/* Stale Results Summary */}
+      {hasStaleResults && (
+        <CardContent className="pb-0">
+          <div className="mb-4 flex items-center justify-between rounded-md bg-amber-50 p-3 dark:bg-amber-950/30">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">
+                {staleCount} stale branch{staleCount === 1 ? "" : "es"} found
+              </span>
+              <span className="text-xs text-muted-foreground">
+                (base: {settings.staleSearch?.baseBranch})
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearStaleResults}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      )}
+
       <CardContent className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <div className="space-y-1">
           <Label
