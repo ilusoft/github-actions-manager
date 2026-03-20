@@ -61,7 +61,7 @@ export function BulkPrDialog({
 
   const initialStatuses = useMemo<RepositoryStatus[]>(
     () => repositories.map((name) => ({ name, status: "idle" })),
-    [repositories]
+    [repositories],
   );
   const [statuses, setStatuses] = useState<RepositoryStatus[]>(initialStatuses);
 
@@ -83,17 +83,17 @@ export function BulkPrDialog({
       repository: string,
       status: RepositoryActionStatus,
       message?: string,
-      pullRequestUrl?: string
+      pullRequestUrl?: string,
     ) => {
       setStatuses((previous) =>
         previous.map((entry) =>
           entry.name === repository
             ? { ...entry, status, message, pullRequestUrl }
-            : entry
-        )
+            : entry,
+        ),
       );
     },
-    []
+    [],
   );
 
   const handleCreatePullRequests = useCallback(async () => {
@@ -126,14 +126,14 @@ export function BulkPrDialog({
           trimmedTarget,
           trimmedDescription || undefined,
           false, // draft = false
-          controller.signal
+          controller.signal,
         );
 
         updateStatus(
           repository,
           "success",
           "Pull request created successfully.",
-          response.html_url
+          response.html_url,
         );
       } catch (error) {
         if (controller.signal.aborted) {
@@ -179,8 +179,8 @@ export function BulkPrDialog({
       previous.map((entry) =>
         entry.status === "pending"
           ? { ...entry, status: "cancelled", message: "Operation cancelled." }
-          : entry
-      )
+          : entry,
+      ),
     );
     setIsRunning(false);
   }, []);
@@ -193,17 +193,17 @@ export function BulkPrDialog({
 
       onOpenChange(nextOpen);
     },
-    [handleCancel, onOpenChange]
+    [handleCancel, onOpenChange],
   );
 
   const allCompleted = statuses.every(
-    (entry) => entry.status === "success" || entry.status === "cancelled"
+    (entry) => entry.status === "success" || entry.status === "cancelled",
   );
   const hasSucceeded = statuses.some((entry) => entry.status === "success");
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" scrollable>
         <DialogHeader>
           <DialogTitle>Create pull requests</DialogTitle>
           <DialogDescription>
@@ -333,8 +333,8 @@ export function BulkPrDialog({
               {isRunning
                 ? "Running..."
                 : hasSucceeded
-                ? "Completed"
-                : "Create pull requests"}
+                  ? "Completed"
+                  : "Create pull requests"}
             </Button>
           </div>
         </DialogFooter>

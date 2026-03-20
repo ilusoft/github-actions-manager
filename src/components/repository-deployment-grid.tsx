@@ -61,7 +61,7 @@ export function RepositoryDeploymentGrid({
   const [draftOrder, setDraftOrder] = useState<string[]>([]);
   const [draftHiddenKeys, setDraftHiddenKeys] = useState<string[]>([]);
   const [lastSyncedSignature, setLastSyncedSignature] = useState<string | null>(
-    null
+    null,
   );
 
   const queries = useQueries({
@@ -83,7 +83,7 @@ export function RepositoryDeploymentGrid({
   }) as UseQueryResult<EnvironmentDeploymentSummary[], GithubApiError>[];
 
   const isLoading = queries.some(
-    (query) => query.isLoading || query.isFetching
+    (query) => query.isLoading || query.isFetching,
   );
   const firstError = queries.find((query) => query.isError);
 
@@ -120,7 +120,7 @@ export function RepositoryDeploymentGrid({
     });
 
     return Array.from(groups.values()).sort((a, b) =>
-      a.displayName.localeCompare(b.displayName)
+      a.displayName.localeCompare(b.displayName),
     );
   }, [dataByRepository]);
 
@@ -134,32 +134,32 @@ export function RepositoryDeploymentGrid({
 
   const allEnvironmentKeys = useMemo(
     () => environmentGroups.map((group) => group.key),
-    [environmentGroups]
+    [environmentGroups],
   );
 
   const orderedKeys = useMemo(() => {
     const fromPreferences = preferences.order.filter((key) =>
-      environmentByKey.has(key)
+      environmentByKey.has(key),
     );
     const remaining = allEnvironmentKeys.filter(
-      (key) => !fromPreferences.includes(key)
+      (key) => !fromPreferences.includes(key),
     );
     return [...fromPreferences, ...remaining];
   }, [preferences.order, environmentByKey, allEnvironmentKeys]);
 
   const hiddenSet = useMemo(
     () => new Set(preferences.hidden),
-    [preferences.hidden]
+    [preferences.hidden],
   );
 
   const availableKeySet = useMemo(
     () => new Set(allEnvironmentKeys),
-    [allEnvironmentKeys]
+    [allEnvironmentKeys],
   );
 
   const filteredHiddenKeys = useMemo(
     () => preferences.hidden.filter((key) => availableKeySet.has(key)),
-    [preferences.hidden, availableKeySet]
+    [preferences.hidden, availableKeySet],
   );
 
   const preferenceSignature = useMemo(
@@ -168,12 +168,12 @@ export function RepositoryDeploymentGrid({
         order: orderedKeys,
         hidden: filteredHiddenKeys,
       }),
-    [orderedKeys, filteredHiddenKeys]
+    [orderedKeys, filteredHiddenKeys],
   );
 
   const draftHiddenSet = useMemo(
     () => new Set(draftHiddenKeys),
-    [draftHiddenKeys]
+    [draftHiddenKeys],
   );
 
   const visibleEnvironmentGroups = useMemo(() => {
@@ -241,7 +241,7 @@ export function RepositoryDeploymentGrid({
   const draftOrderedKeys = useMemo(() => {
     const sanitized = draftOrder.filter((key) => environmentByKey.has(key));
     const remaining = allEnvironmentKeys.filter(
-      (key) => !sanitized.includes(key)
+      (key) => !sanitized.includes(key),
     );
     return [...sanitized, ...remaining];
   }, [draftOrder, environmentByKey, allEnvironmentKeys]);
@@ -317,7 +317,7 @@ export function RepositoryDeploymentGrid({
                             onCheckedChange={(checked) =>
                               onRepositorySelectionChange(
                                 repository,
-                                checked === true
+                                checked === true,
                               )
                             }
                             aria-label={`Select repository ${repository}`}
@@ -390,7 +390,7 @@ export function RepositoryDeploymentGrid({
                           <div
                             className={cn(
                               "rounded-md border p-3 text-xs shadow-sm transition-colors",
-                              statusClass
+                              statusClass,
                             )}
                           >
                             <div className="flex items-center justify-between gap-2">
@@ -472,7 +472,7 @@ export function RepositoryDeploymentGrid({
         open={isCustomizeDialogOpen}
         onOpenChange={setIsCustomizeDialogOpen}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" scrollable>
           <DialogHeader>
             <DialogTitle>Customize deployment columns</DialogTitle>
             <DialogDescription>

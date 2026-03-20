@@ -78,9 +78,8 @@ export function BulkPullRequestMergeDialog({
 }: BulkPullRequestMergeDialogProps) {
   const [commitTitle, setCommitTitle] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
-  const [mergeMethod, setMergeMethod] = useState<PullRequestMergeMethod>(
-    DEFAULT_MERGE_METHOD
-  );
+  const [mergeMethod, setMergeMethod] =
+    useState<PullRequestMergeMethod>(DEFAULT_MERGE_METHOD);
   const [isRunning, setIsRunning] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -102,12 +101,11 @@ export function BulkPullRequestMergeDialog({
         title: entry.title,
         url: entry.url,
       })),
-    [sortedPullRequests]
+    [sortedPullRequests],
   );
 
-  const [statuses, setStatuses] = useState<PullRequestStatusEntry[]>(
-    initialStatuses
-  );
+  const [statuses, setStatuses] =
+    useState<PullRequestStatusEntry[]>(initialStatuses);
 
   useEffect(() => {
     if (open) {
@@ -132,17 +130,17 @@ export function BulkPullRequestMergeDialog({
       repository: string,
       pullNumber: number,
       status: RepositoryActionStatus,
-      message?: string
+      message?: string,
     ) => {
       setStatuses((previous) =>
         previous.map((entry) =>
           entry.repository === repository && entry.pullNumber === pullNumber
             ? { ...entry, status, message }
-            : entry
-        )
+            : entry,
+        ),
       );
     },
-    []
+    [],
   );
 
   const handleMerge = useCallback(async () => {
@@ -171,7 +169,7 @@ export function BulkPullRequestMergeDialog({
         entry.repository,
         entry.number,
         "pending",
-        "Merging pull request..."
+        "Merging pull request...",
       );
 
       try {
@@ -185,7 +183,7 @@ export function BulkPullRequestMergeDialog({
             method: mergeMethod,
             sha: entry.headSha,
             signal: controller.signal,
-          }
+          },
         );
 
         if (response && "merged" in response && response.merged) {
@@ -193,7 +191,7 @@ export function BulkPullRequestMergeDialog({
             entry.repository,
             entry.number,
             "success",
-            response.message || "Pull request merged successfully."
+            response.message || "Pull request merged successfully.",
           );
         } else {
           const message = response?.message ?? "Merge failed.";
@@ -240,8 +238,8 @@ export function BulkPullRequestMergeDialog({
       previous.map((entry) =>
         entry.status === "pending"
           ? { ...entry, status: "cancelled", message: "Operation cancelled." }
-          : entry
-      )
+          : entry,
+      ),
     );
     setIsRunning(false);
   }, []);
@@ -258,14 +256,18 @@ export function BulkPullRequestMergeDialog({
       const nextMethod = event.target.value as PullRequestMergeMethod;
       setMergeMethod(nextMethod);
     },
-    []
+    [],
   );
 
   const allCompleted = statuses.every(
     (entry) =>
-      entry.status === "success" || entry.status === "error" || entry.status === "cancelled"
+      entry.status === "success" ||
+      entry.status === "error" ||
+      entry.status === "cancelled",
   );
-  const successfulCount = statuses.filter((entry) => entry.status === "success").length;
+  const successfulCount = statuses.filter(
+    (entry) => entry.status === "success",
+  ).length;
   const hasAnyAttempt = statuses.some((entry) => entry.status !== "idle");
 
   const defaultButtonLabel = (() => {
@@ -286,11 +288,12 @@ export function BulkPullRequestMergeDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" scrollable>
         <DialogHeader>
           <DialogTitle>Merge pull requests</DialogTitle>
           <DialogDescription>
-            Provide merge details. The selected pull requests will be merged sequentially.
+            Provide merge details. The selected pull requests will be merged
+            sequentially.
           </DialogDescription>
         </DialogHeader>
 
@@ -366,7 +369,8 @@ export function BulkPullRequestMergeDialog({
                   <span
                     className={`self-start rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLE[entry.status]}`}
                   >
-                    {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+                    {entry.status.charAt(0).toUpperCase() +
+                      entry.status.slice(1)}
                   </span>
                 </li>
               ))}

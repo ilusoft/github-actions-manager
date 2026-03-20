@@ -23,7 +23,12 @@ interface BulkBranchDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type RepositoryActionStatus = "idle" | "pending" | "success" | "error" | "cancelled";
+type RepositoryActionStatus =
+  | "idle"
+  | "pending"
+  | "success"
+  | "error"
+  | "cancelled";
 
 interface RepositoryStatus {
   name: string;
@@ -53,7 +58,7 @@ export function BulkBranchDialog({
 
   const initialStatuses = useMemo<RepositoryStatus[]>(
     () => repositories.map((name) => ({ name, status: "idle" })),
-    [repositories]
+    [repositories],
   );
   const [statuses, setStatuses] = useState<RepositoryStatus[]>(initialStatuses);
 
@@ -73,17 +78,17 @@ export function BulkBranchDialog({
       repository: string,
       status: RepositoryActionStatus,
       message?: string,
-      branchUrl?: string
+      branchUrl?: string,
     ) => {
       setStatuses((previous) =>
         previous.map((entry) =>
           entry.name === repository
             ? { ...entry, status, message, branchUrl }
-            : entry
-        )
+            : entry,
+        ),
       );
     },
-    []
+    [],
   );
 
   const handleCreateBranches = useCallback(async () => {
@@ -110,7 +115,7 @@ export function BulkBranchDialog({
           organization,
           repository,
           trimmedBase,
-          controller.signal
+          controller.signal,
         );
 
         await createBranchRef(
@@ -118,7 +123,7 @@ export function BulkBranchDialog({
           repository,
           trimmedNew,
           baseSha,
-          controller.signal
+          controller.signal,
         );
 
         const branchUrl = `https://github.com/${organization}/${repository}/tree/${encodeURIComponent(trimmedNew)}`;
@@ -126,7 +131,7 @@ export function BulkBranchDialog({
           repository,
           "success",
           "Branch created successfully.",
-          branchUrl
+          branchUrl,
         );
       } catch (error) {
         if (controller.signal.aborted) {
@@ -164,8 +169,8 @@ export function BulkBranchDialog({
       previous.map((entry) =>
         entry.status === "pending"
           ? { ...entry, status: "cancelled", message: "Operation cancelled." }
-          : entry
-      )
+          : entry,
+      ),
     );
     setIsRunning(false);
   }, []);
@@ -178,22 +183,22 @@ export function BulkBranchDialog({
 
       onOpenChange(nextOpen);
     },
-    [handleCancel, onOpenChange]
+    [handleCancel, onOpenChange],
   );
 
   const allCompleted = statuses.every(
-    (entry) => entry.status === "success" || entry.status === "cancelled"
+    (entry) => entry.status === "success" || entry.status === "cancelled",
   );
   const hasSucceeded = statuses.some((entry) => entry.status === "success");
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" scrollable>
         <DialogHeader>
           <DialogTitle>Create branch in repositories</DialogTitle>
           <DialogDescription>
-            Provide the base branch and the new branch name. The action will run sequentially across the
-            selected repositories.
+            Provide the base branch and the new branch name. The action will run
+            sequentially across the selected repositories.
           </DialogDescription>
         </DialogHeader>
 
@@ -251,7 +256,8 @@ export function BulkBranchDialog({
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLE[entry.status]}`}
                   >
-                    {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+                    {entry.status.charAt(0).toUpperCase() +
+                      entry.status.slice(1)}
                   </span>
                 </li>
               ))}
@@ -288,7 +294,11 @@ export function BulkBranchDialog({
                 hasSucceeded
               }
             >
-              {isRunning ? "Running..." : hasSucceeded ? "Completed" : "Create branches"}
+              {isRunning
+                ? "Running..."
+                : hasSucceeded
+                  ? "Completed"
+                  : "Create branches"}
             </Button>
           </div>
         </DialogFooter>

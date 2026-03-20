@@ -97,7 +97,7 @@ export function BulkPRReviewDialog({
         pullRequestNumber: entry.number,
         status: "idle" as const,
         message: "Ready to submit review.",
-      }))
+      })),
     );
     hasNotifiedCompletion.current = false;
   }, [open, selectedPullRequests]);
@@ -143,8 +143,8 @@ export function BulkPRReviewDialog({
         status === "approve"
           ? "APPROVE"
           : status === "request_changes"
-          ? "REQUEST_CHANGES"
-          : "COMMENT";
+            ? "REQUEST_CHANGES"
+            : "COMMENT";
 
       return submitPullRequestReview({
         organization,
@@ -159,7 +159,7 @@ export function BulkPRReviewDialog({
         variables.repository,
         variables.pullRequestNumber,
         "error",
-        error.message
+        error.message,
       );
     },
   });
@@ -169,14 +169,14 @@ export function BulkPRReviewDialog({
       repository: string,
       pullRequestNumber: number,
       status: ReviewProgressEntry["status"],
-      message?: string
+      message?: string,
     ) => {
       const key = `${repository}-${pullRequestNumber}`;
       setStatuses((prev) => {
         const existing = prev.find((entry) => entry.key === key);
         if (existing) {
           return prev.map((entry) =>
-            entry.key === key ? { ...entry, status, message } : entry
+            entry.key === key ? { ...entry, status, message } : entry,
           );
         }
         return [
@@ -185,7 +185,7 @@ export function BulkPRReviewDialog({
         ];
       });
     },
-    []
+    [],
   );
 
   const handleCreateReviews = useCallback(async () => {
@@ -200,7 +200,7 @@ export function BulkPRReviewDialog({
         pullRequestNumber: entry.number,
         status: "pending" as const,
         message: "Submitting review...",
-      }))
+      })),
     );
 
     const tasks = selectedPullRequests.map((entry) =>
@@ -216,12 +216,12 @@ export function BulkPRReviewDialog({
             entry.repository,
             entry.number,
             "success",
-            "Review submitted successfully"
+            "Review submitted successfully",
           );
         })
         .catch((error) => {
           updateStatus(entry.repository, entry.number, "error", error.message);
-        })
+        }),
     );
 
     await Promise.allSettled(tasks);
@@ -239,8 +239,8 @@ export function BulkPRReviewDialog({
       prev.map((entry) =>
         entry.status === "pending"
           ? { ...entry, status: "cancelled", message: "Operation cancelled." }
-          : entry
-      )
+          : entry,
+      ),
     );
   }, []);
 
@@ -251,7 +251,7 @@ export function BulkPRReviewDialog({
       }
       onOpenChange(nextOpen);
     },
-    [handleCancel, onOpenChange]
+    [handleCancel, onOpenChange],
   );
 
   const hasSucceeded = statuses.some((entry) => entry.status === "success");
@@ -261,7 +261,7 @@ export function BulkPRReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" scrollable>
         <DialogHeader>
           <DialogTitle>Review pull requests</DialogTitle>
           <DialogDescription>
@@ -350,7 +350,7 @@ export function BulkPRReviewDialog({
                   <span
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium",
-                      STATUS_CLASSES[entry.status]
+                      STATUS_CLASSES[entry.status],
                     )}
                   >
                     {STATUS_ICONS[entry.status]}
@@ -399,16 +399,16 @@ export function BulkPRReviewDialog({
               {isRunning
                 ? "Submitting..."
                 : hasSucceeded
-                ? "Completed"
-                : hasErrors
-                ? "Some Failed"
-                : `Submit ${
-                    reviewStatus === "approve"
-                      ? "approvals"
-                      : reviewStatus === "request_changes"
-                      ? "change requests"
-                      : "comments"
-                  }`}
+                  ? "Completed"
+                  : hasErrors
+                    ? "Some Failed"
+                    : `Submit ${
+                        reviewStatus === "approve"
+                          ? "approvals"
+                          : reviewStatus === "request_changes"
+                            ? "change requests"
+                            : "comments"
+                      }`}
             </Button>
           </div>
         </DialogFooter>

@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useState } from "react";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,51 +9,55 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface AccessTokenDialogProps {
-  hasToken: boolean
-  saveToken: (token: string) => void
-  clearToken: () => void
+  hasToken: boolean;
+  saveToken: (token: string) => void;
+  clearToken: () => void;
 }
 
-export function AccessTokenDialog({ hasToken, saveToken, clearToken }: AccessTokenDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [token, setToken] = useState("")
-  const [error, setError] = useState("")
+export function AccessTokenDialog({
+  hasToken,
+  saveToken,
+  clearToken,
+}: AccessTokenDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState("");
+  const [error, setError] = useState("");
 
   const resetState = () => {
-    setToken("")
-    setError("")
-  }
+    setToken("");
+    setError("");
+  };
 
   const handleClose = (nextOpen: boolean) => {
-    setOpen(nextOpen)
+    setOpen(nextOpen);
     if (!nextOpen) {
-      resetState()
+      resetState();
     }
-  }
+  };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+    event.preventDefault();
 
     if (!token.trim()) {
-      setError("Enter a token before saving.")
-      return
+      setError("Enter a token before saving.");
+      return;
     }
 
-    saveToken(token)
-    resetState()
-    setOpen(false)
-  }
+    saveToken(token);
+    resetState();
+    setOpen(false);
+  };
 
   const handleClear = () => {
-    clearToken()
-    resetState()
-    setOpen(false)
-  }
+    clearToken();
+    resetState();
+    setOpen(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -62,12 +66,13 @@ export function AccessTokenDialog({ hasToken, saveToken, clearToken }: AccessTok
           {hasToken ? "Manage Access Token" : "Add Access Token"}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent scrollable>
         <DialogHeader>
           <DialogTitle>GitHub Personal Access Token</DialogTitle>
           <DialogDescription>
-            The token is stored locally in your browser. We never display it again once
-            saved. Generate a new token with the required scopes and paste it here.
+            The token is stored locally in your browser. We never display it
+            again once saved. Generate a new token with the required scopes and
+            paste it here.
           </DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={handleSubmit}>
@@ -104,5 +109,5 @@ export function AccessTokenDialog({ hasToken, saveToken, clearToken }: AccessTok
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
