@@ -65,7 +65,7 @@ const normalizeBody = (value?: string | null) => {
 export const fetchRepositoryPullRequests = async (
   organization: string,
   repository: string,
-  options?: RepositoryPullRequestRequestOptions
+  options?: RepositoryPullRequestRequestOptions,
 ): Promise<RepositoryPullRequestSummary[]> => {
   const encodedOrg = encodeURIComponent(organization);
   const encodedRepo = encodeURIComponent(repository);
@@ -107,15 +107,12 @@ export const fetchRepositoryPullRequests = async (
             detailMap.set(pull.number, detail);
           }
         } catch (error) {
-          if (
-            error instanceof DOMException &&
-            error.name === "AbortError"
-          ) {
+          if (error instanceof DOMException && error.name === "AbortError") {
             throw error;
           }
           // Ignore other errors when fetching mergeability info.
         }
-      })
+      }),
     );
   }
 
@@ -133,7 +130,8 @@ export const fetchRepositoryPullRequests = async (
       const draft = Boolean(pull.draft);
       const detail = detailMap.get(pull.number) ?? pull;
       const rawMergeable = detail.mergeable;
-      const mergeable = typeof rawMergeable === "boolean" ? rawMergeable : undefined;
+      const mergeable =
+        typeof rawMergeable === "boolean" ? rawMergeable : undefined;
       const mergeableState = detail.mergeable_state ?? undefined;
 
       return {
@@ -182,7 +180,7 @@ export const createPullRequest = async (
   base: string,
   body?: string,
   draft?: boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<CreatePullRequestResponse> => {
   const encodedOrg = encodeURIComponent(organization);
   const encodedRepo = encodeURIComponent(repository);
@@ -243,6 +241,45 @@ export const submitPullRequestReview = async ({
   return fetchGithubJson<PullRequestReviewResponse | void>({
     path: `/repos/${encodedOrg}/${encodedRepo}/pulls/${pullNumber}/reviews`,
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+};
+
+// Close Pull Request
+interface ClosePullRequestOptions {
+  organization: string;
+  repository: string;
+  pullNumber: number;
+  signal?: AbortSignal;
+}
+
+interface PullRequestCloseResponse {
+  number: number;
+  state: string;
+  title: string;
+  html_url: string;
+}
+
+export const closePullRequest = async ({
+  organization,
+  repository,
+  pullNumber,
+  signal,
+}: ClosePullRequestOptions): Promise<PullRequestCloseResponse> => {
+  const encodedOrg = encodeURIComponent(organization);
+  const encodedRepo = encodeURIComponent(repository);
+
+  const payload = {
+    state: "closed" as const,
+  };
+
+  return fetchGithubJson<PullRequestCloseResponse>({
+    path: `/repos/${encodedOrg}/${encodedRepo}/pulls/${pullNumber}`,
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },

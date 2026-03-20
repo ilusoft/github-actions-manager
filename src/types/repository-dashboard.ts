@@ -42,3 +42,18 @@ export type PullRequestViewSettings = {
   base: string;
   author: string;
 };
+
+export type RegexPreset = {
+  id: string;
+  name: string;
+  description: string;
+  searchPattern: string;
+  replaceWith: string;
+  isBuiltIn: boolean;
+  createdAt: string;
+};
+
+export type RegexPresetsStorage = {
+  presets: RegexPreset[];
+  lastUpdated: string;
+};

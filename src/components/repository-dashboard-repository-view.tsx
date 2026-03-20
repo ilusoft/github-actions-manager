@@ -31,6 +31,7 @@ import { RepositoryDashboardBranchFooter } from "@/components/repository-dashboa
 import { WorkflowFiltersCard } from "@/components/workflow-filters-card";
 import { BranchSettingsCard } from "@/components/branch-settings-card";
 import { StaleBranchSearchDialog } from "@/components/stale-branch-search-dialog";
+import { BulkFileEditDialog } from "@/components/bulk-file-edit-dialog";
 import {
   type BranchViewSettings,
   type RepositoryViewMode,
@@ -101,6 +102,8 @@ const RepositoryDashboardRepositoryViewComponent = ({
     useState(false);
   const [isStaleBranchSearchDialogOpen, setIsStaleBranchSearchDialogOpen] =
     useState(false);
+  const [isBulkFileEditDialogOpen, setIsBulkFileEditDialogOpen] =
+    useState(false);
   const [activeWorkflow, setActiveWorkflow] =
     useState<RepositoryWorkflowSummary | null>(null);
 
@@ -167,6 +170,11 @@ const RepositoryDashboardRepositoryViewComponent = ({
 
         setBulkWorkflowState({ workflows, error });
         setIsBulkWorkflowDialogOpen(true);
+        return;
+      }
+
+      if (action === "bulk-edit") {
+        setIsBulkFileEditDialogOpen(true);
         return;
       }
     },
@@ -279,6 +287,12 @@ const RepositoryDashboardRepositoryViewComponent = ({
         open={isStaleBranchSearchDialogOpen}
         onOpenChange={setIsStaleBranchSearchDialogOpen}
         onSearchComplete={handleStaleBranchSearchComplete}
+      />
+      <BulkFileEditDialog
+        organization={organization}
+        repositories={selectedRepositoriesArray}
+        open={isBulkFileEditDialogOpen}
+        onOpenChange={setIsBulkFileEditDialogOpen}
       />
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4">

@@ -7,6 +7,7 @@ import {
   type PullRequestBulkAction,
 } from "@/components/repository-dashboard-pull-request-footer";
 import { BulkPullRequestMergeDialog } from "@/components/bulk-pull-request-merge-dialog";
+import { BulkClosePullRequestDialog } from "@/components/bulk-close-pull-request-dialog";
 import {
   BulkPRReviewDialog,
   type ReviewProgressEntry,
@@ -37,6 +38,7 @@ const RepositoryDashboardPullRequestViewComponent = ({
 
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
+  const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
 
   useEffect(() => {
     ensureSelectionWithinRepositories(repositories);
@@ -74,7 +76,7 @@ const RepositoryDashboardPullRequestViewComponent = ({
       pullRequestPerPage,
       pullRequestState,
       queryClient,
-    ]
+    ],
   );
 
   const handleBulkAction = useCallback(
@@ -90,9 +92,14 @@ const RepositoryDashboardPullRequestViewComponent = ({
 
       if (action === "review") {
         setIsReviewDialogOpen(true);
+        return;
+      }
+
+      if (action === "close") {
+        setIsCloseDialogOpen(true);
       }
     },
-    [selectedEntries.length]
+    [selectedEntries.length],
   );
 
   const handleMergeCompleted = useCallback(() => {
@@ -102,7 +109,7 @@ const RepositoryDashboardPullRequestViewComponent = ({
     }
 
     const repositoriesToRefresh = new Set(
-      selectedEntries.map((entry) => entry.repository)
+      selectedEntries.map((entry) => entry.repository),
     );
 
     invalidatePullRequestQueries(repositoriesToRefresh);
@@ -124,15 +131,34 @@ const RepositoryDashboardPullRequestViewComponent = ({
       const repositoriesToRefresh = new Set(
         results
           .filter((entry) => entry.status !== "idle")
-          .map((entry) => entry.repository)
+          .map((entry) => entry.repository),
       );
 
       invalidatePullRequestQueries(repositoriesToRefresh);
       clearSelectedPullRequests();
       setIsReviewDialogOpen(false);
     },
-    [clearSelectedPullRequests, invalidatePullRequestQueries]
+    [clearSelectedPullRequests, invalidatePullRequestQueries],
   );
+
+  const handleCloseCompleted = useCallback(() => {
+    if (selectedEntries.length === 0) {
+      setIsCloseDialogOpen(false);
+      return;
+    }
+
+    const repositoriesToRefresh = new Set(
+      selectedEntries.map((entry) => entry.repository),
+    );
+
+    invalidatePullRequestQueries(repositoriesToRefresh);
+    clearSelectedPullRequests();
+    setIsCloseDialogOpen(false);
+  }, [
+    clearSelectedPullRequests,
+    invalidatePullRequestQueries,
+    selectedEntries,
+  ]);
 
   return (
     <>
@@ -149,6 +175,13 @@ const RepositoryDashboardPullRequestViewComponent = ({
         open={isReviewDialogOpen}
         onOpenChange={setIsReviewDialogOpen}
         onCompleted={handleReviewCompleted}
+      />
+      <BulkClosePullRequestDialog
+        organization={organization}
+        pullRequests={selectedEntries}
+        open={isCloseDialogOpen}
+        onOpenChange={setIsCloseDialogOpen}
+        onCompleted={handleCloseCompleted}
       />
       <RepositoryPullRequestTree
         organization={organization}
@@ -168,5 +201,5 @@ const RepositoryDashboardPullRequestViewComponent = ({
 };
 
 export const RepositoryDashboardPullRequestView = memo(
-  RepositoryDashboardPullRequestViewComponent
+  RepositoryDashboardPullRequestViewComponent,
 );

@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 
-export type PullRequestBulkAction = "review" | "merge";
+export type PullRequestBulkAction = "review" | "merge" | "close";
 
 interface RepositoryDashboardPullRequestFooterProps {
   count: number;
@@ -28,8 +28,8 @@ const RepositoryDashboardPullRequestFooterComponent = ({
     return null;
   }
 
-  const handleSelect = (action: PullRequestBulkAction) =>
-    (event: Event | BaseSyntheticEvent) => {
+  const handleSelect =
+    (action: PullRequestBulkAction) => (event: Event | BaseSyntheticEvent) => {
       event.preventDefault();
       if (disabled) {
         return;
@@ -72,6 +72,9 @@ const RepositoryDashboardPullRequestFooterComponent = ({
             <DropdownMenuItem onSelect={handleSelect("merge")}>
               Merge pull requests
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleSelect("close")}>
+              Close pull requests
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -80,5 +83,5 @@ const RepositoryDashboardPullRequestFooterComponent = ({
 };
 
 export const RepositoryDashboardPullRequestFooter = memo(
-  RepositoryDashboardPullRequestFooterComponent
+  RepositoryDashboardPullRequestFooterComponent,
 );

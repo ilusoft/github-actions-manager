@@ -12,7 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 export type RepositoryBulkAction =
   | "create-branch"
   | "create-pr"
-  | "run-workflow";
+  | "run-workflow"
+  | "bulk-edit";
 
 interface RepositoryDashboardBulkActionsFooterProps {
   count: number;
@@ -29,7 +30,8 @@ const RepositoryDashboardBulkActionsFooterComponent = ({
     return null;
   }
 
-  const handleSelect = (action: RepositoryBulkAction) =>
+  const handleSelect =
+    (action: RepositoryBulkAction) =>
     (event: Event | React.BaseSyntheticEvent) => {
       event.preventDefault();
       onSelectAction(action);
@@ -70,6 +72,9 @@ const RepositoryDashboardBulkActionsFooterComponent = ({
             <DropdownMenuItem onSelect={handleSelect("run-workflow")}>
               Run workflow
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleSelect("bulk-edit")}>
+              Bulk file edit
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -78,5 +83,5 @@ const RepositoryDashboardBulkActionsFooterComponent = ({
 };
 
 export const RepositoryDashboardBulkActionsFooter = memo(
-  RepositoryDashboardBulkActionsFooterComponent
+  RepositoryDashboardBulkActionsFooterComponent,
 );
