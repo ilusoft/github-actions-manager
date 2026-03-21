@@ -57,6 +57,7 @@ interface ProgressState {
   current: number;
   total: number;
   repository: string;
+  foundCount: number;
 }
 
 export function StaleBranchSearchDialog({
@@ -81,6 +82,7 @@ export function StaleBranchSearchDialog({
     current: 0,
     total: repositories.length,
     repository: "",
+    foundCount: 0,
   });
   const [foundBranches, setFoundBranches] = useState<StaleBranchInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +111,12 @@ export function StaleBranchSearchDialog({
       setBranchNameFilter("");
       setBranchNameFilterMode("exclude");
       setStatus("idle");
-      setProgress({ current: 0, total: repositories.length, repository: "" });
+      setProgress({
+        current: 0,
+        total: repositories.length,
+        repository: "",
+        foundCount: 0,
+      });
       setFoundBranches([]);
       setError(null);
       setSelectedBranches(new Set());
@@ -139,7 +146,12 @@ export function StaleBranchSearchDialog({
     setError(null);
     setStatus("searching");
     setFoundBranches([]);
-    setProgress({ current: 0, total: repositories.length, repository: "" });
+    setProgress({
+      current: 0,
+      total: repositories.length,
+      repository: "",
+      foundCount: 0,
+    });
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -154,8 +166,19 @@ export function StaleBranchSearchDialog({
         authorFilter: author,
         daysOldThreshold,
         signal: controller.signal,
-        onProgress: (current, total, repo) => {
-          setProgress({ current, total, repository: repo });
+        onProgress: (current, total, repo, foundCount) => {
+          setProgress({
+            current,
+            total,
+            repository: repo,
+            foundCount: foundCount ?? 0,
+          });
+        },
+        onBranchFound: (branch) => {
+          setFoundBranches((prev) => {
+            const next = [...prev, branch];
+            return next;
+          });
         },
       });
 
@@ -542,7 +565,7 @@ export function StaleBranchSearchDialog({
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Found {foundBranches.length} stale branches so far...
+                Found {progress.foundCount} stale branches so far...
               </p>
             </div>
           ) : null}

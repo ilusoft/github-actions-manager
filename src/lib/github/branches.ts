@@ -338,7 +338,13 @@ export interface StaleBranchSearchOptions {
   authorFilter?: string; // undefined means ALL users
   daysOldThreshold: number; // branches older than this many days
   signal?: AbortSignal;
-  onProgress?: (current: number, total: number, repository: string) => void;
+  onProgress?: (
+    current: number,
+    total: number,
+    repository: string,
+    foundCount?: number,
+  ) => void;
+  onBranchFound?: (branch: StaleBranchInfo) => void;
 }
 
 /**
@@ -475,6 +481,7 @@ export const searchStaleBranches = async (
     daysOldThreshold,
     signal,
     onProgress,
+    onBranchFound,
   } = options;
 
   const staleBranches: StaleBranchInfo[] = [];
@@ -489,7 +496,7 @@ export const searchStaleBranches = async (
     const repository = repositories[i];
 
     // Report progress
-    onProgress?.(i + 1, repositories.length, repository);
+    onProgress?.(i + 1, repositories.length, repository, staleBranches.length);
 
     // Check if cancelled
     if (signal?.aborted) {
@@ -584,7 +591,7 @@ export const searchStaleBranches = async (
               compareResult.ahead_by === 0 && compareResult.behind_by === 0;
 
             if (isMerged || isSameAsBase) {
-              staleBranches.push({
+              const staleBranch: StaleBranchInfo = {
                 repository,
                 branchName,
                 branchUrl: `https://github.com/${organization}/${repository}/tree/${encodeURIComponent(branchName)}`,
@@ -594,7 +601,16 @@ export const searchStaleBranches = async (
                 baseBranch,
                 aheadBy: compareResult.ahead_by,
                 behindBy: compareResult.behind_by,
-              });
+              };
+              staleBranches.push(staleBranch);
+              onBranchFound?.(staleBranch);
+              // Also update progress to trigger UI re-render with new count
+              onProgress?.(
+                i + 1,
+                repositories.length,
+                repository,
+                staleBranches.length,
+              );
             }
           } catch (error) {
             // If compare fails (e.g., base branch doesn't exist in this repo),

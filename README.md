@@ -85,6 +85,12 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
   - **Per-workflow payload filtering**: Dispatch requests only include inputs that the target workflow file supports, preventing 422 errors from unexpected parameters.
   - **Enhanced progress tracking**: Shows repository and workflow name for each dispatch operation with real-time status updates and links back to the created runs.
   - **Dialog layout parity**: Dialog height is constrained to 80% of the viewport with a scrollable body, aligning with the other bulk dialogs for consistent ergonomics.
+- **Bulk File Edit Dialog**: Search and edit files across multiple repositories using glob patterns or regex.
+  - **Glob pattern search**: Find files matching glob patterns (e.g., `**/*.yml`, `src/**/*.ts`) across selected repositories.
+  - **Regex search & replace**: Use regular expressions to find and replace content in files with full match preview and capture group support.
+  - **Regex presets**: Built-in presets for common patterns (Node.js version, Python version, package versions, GitHub Actions versions) with custom regex support.
+  - **Branch & PR creation**: Automatically create a new branch with changes and optionally create a pull request.
+  - **Per-file preview**: View matching content before applying changes with syntax highlighting.
 - Each action surfaces repository-level progress, success/error statuses, and direct links to resulting GitHub resources.
 
 6. **Bulk Branch View**
@@ -96,6 +102,23 @@ The app boots from `src/main.tsx`, renders `App.tsx`, and styles load from `src/
 - The **Pull Requests** dashboard view surfaces repository PRs with mergeability context derived from GitHub.
 - **Mergeable status badges**: Each PR entry now indicates whether it is mergeable, has conflicts, is blocked, or has failing checks. Unknown states render a neutral badge while GitHub computes mergeability.
 - **Auto refresh controls**: Use the toolbar toggle to enable 60-second auto refreshes for the active dashboard view; disable it to remain on-demand.
+
+8. **Organize repositories with groups**
+
+- Use the **Repository Groups Manager** to organize repositories into named groups for easier management.
+- **Create and manage groups**: Create named groups, add/remove repositories, enable/disable groups, and delete groups.
+- **Import/Export**: Export groups to JSON for backup or sharing, import groups from JSON files.
+- **Persistent storage**: Groups are saved to localStorage and persist across sessions.
+- **Per-organization**: Groups are scoped to each organization, so switching organizations shows the appropriate groups.
+
+9. **Search for stale branches**
+
+- Use the **Stale Branch Search** dialog to find branches that have been merged and can be cleaned up.
+- **Detection method**: Uses GitHub Compare API to check if a branch is ahead/behind the base branch.
+- **Filter options**: Filter by user (specific user or ALL users) and by age (older than X days from last commit).
+- **Rate limiting**: API calls are serialized with delays to prevent GitHub API rate limits.
+- **Progress tracking**: Shows real-time progress during the search with repository-level status.
+- **Bulk actions**: Found stale branches are auto-selected for bulk deletion.
 
 > **Maintenance reminder:** Update this usage section whenever features are added, modified, or removed.
 
@@ -202,9 +225,29 @@ graph TD
   RepositoryDashboardRepositoryView --> BulkBranchDeleteDialog
   RepositoryDashboardRepositoryView --> BulkPrDialog
   RepositoryDashboardRepositoryView --> BulkWorkflowRunDialog
+  RepositoryDashboardRepositoryView --> BulkFileEditDialog
+  RepositoryDashboardRepositoryView --> StaleBranchSearchDialog
+  RepositoryDashboardRepositoryView --> RepositoryGroupsManager
   RepositoryDashboardRepositoryView --> useRepositorySelection
   RepositoryDashboardRepositoryView --> useBranchSelection
   RepositoryDashboardRepositoryView --> useWorkflowDashboardData
+
+  BulkFileEditDialog --> GlobFileSearch
+  BulkFileEditDialog --> RegexPresetSelector
+  BulkFileEditDialog --> useBulkFileEdit
+  BulkFileEditDialog --> fetchFileContents
+  BulkFileEditDialog --> createOrUpdateFile
+  BulkFileEditDialog --> applyFileChange
+
+  GlobFileSearch --> findFilesOptimized
+  findFilesOptimized --> fetchGithubContent
+
+  RegexPresetSelector --> testRegex
+
+  StaleBranchSearchDialog --> searchStaleBranches
+  StaleBranchSearchDialog --> deleteBranchRef
+
+  RepositoryGroupsManager --> useRepositoryGroups
 
   RepositoryDashboardViewContent --> RepositoryDeploymentGrid
   RepositoryDashboardViewContent --> RepositoryBranchTree
@@ -248,27 +291,6 @@ graph TD
 - All new components from shadcn/ui must be added via CLI: `npx shadcn@latest add <component>`. The CLI keeps `components.json` and Tailwind tokens synchronized.
 - Dark mode toggles via the `class` strategy; apply the `dark` class on `<html>` (future layout component should manage this).
 
-## Stale Branch Detection & Prune Feature (Planned)
-
-### Overview
-
-Add ability to detect stale branches (merged PRs) and bulk prune old branches.
-
-### Implementation Plan
-
-1. **Stale Detection**: Use GitHub Compare API (`/repos/{owner}/{repo}/compare/{base}...{head}`) to check if branch is ahead/behind base branch
-   - If branch is NOT ahead of base → merged (stale)
-   - If branch IS ahead → still active
-2. **Branch Details**: Get from GitHub Branch API:
-   - Branch author/committer
-   - Last commit date
-3. **API Rate Limiting**: Serialize calls with small delays to prevent burst
-4. **UI Changes**:
-   - Add "Search stale branches" option to visibility dropdown
-   - Popup for user filter and date range
-   - Progress dialog during search
-   - Display found stale branches in branch view
-
 ### GitHub API Endpoints
 
 - `GET /repos/{owner}/{repo}/compare/{base}...{head}` - Compare branches
@@ -295,6 +317,17 @@ Add ability to detect stale branches (merged PRs) and bulk prune old branches.
 
 ### Recent Changes (March 2026)
 
+- **Bulk File Edit Feature**: Added ability to search and edit files across multiple repositories.
+  - Glob pattern search for finding files (e.g., `**/*.yml`, `src/**/*.ts`)
+  - Regex search & replace with capture group support
+  - Built-in regex presets for common patterns (Node.js, Python, package versions, GitHub Actions)
+  - Create branches and pull requests with the changes
+  - Per-file preview before applying changes
+- **Repository Groups Management**: Added ability to organize repositories into named groups.
+  - Create, edit, and delete repository groups
+  - Enable/disable groups for selective monitoring
+  - Import/export groups to JSON
+  - Per-organization group storage in localStorage
 - **Stale Branch Detection & Prune Feature**: Added ability to detect and prune stale branches (merged PRs) from the Branches tab.
   - Uses GitHub Compare API to check if a branch is ahead/behind the base branch
   - Filter by user (specific user or ALL users)
