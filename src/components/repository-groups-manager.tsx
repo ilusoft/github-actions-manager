@@ -149,6 +149,19 @@ export function RepositoryGroupsManager({
     [importConfiguration],
   );
 
+  const handleExport = useCallback(() => {
+    const json = exportConfiguration();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `repository-groups-${organization || "export"}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [exportConfiguration, organization]);
+
   const startEditingGroup = useCallback((group: RepositoryGroup) => {
     setEditingGroupId(group.id);
     setEditingGroupName(group.name);
@@ -190,7 +203,7 @@ export function RepositoryGroupsManager({
             <Button
               variant="outline"
               size="sm"
-              onClick={exportConfiguration}
+              onClick={handleExport}
               disabled={groups.length === 0}
             >
               <Download className="mr-2 h-4 w-4" />

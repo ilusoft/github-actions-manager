@@ -1,4 +1,5 @@
 import { fetchGithubJson, GithubApiError } from "@/lib/github/client";
+import { minimatch } from "minimatch";
 
 export type FileChangeType =
   | "replace"
@@ -315,4 +316,333 @@ export const createOrUpdateFile = async (
     body: JSON.stringify(payload),
     signal,
   });
+};
+
+// ===========================================
+// Glob-based File Search (Optimized)
+// ===========================================
+
+export interface FileMatchResult {
+  path: string;
+  sha: string;
+  type: "file" | "dir";
+}
+
+interface GithubContentsResponseItem {
+  name: string;
+  path: string;
+  sha: string;
+  type: "file" | "dir";
+  size?: number;
+}
+
+// Default maximum number of API calls for glob pattern search
+const DEFAULT_MAX_API_CALLS = 10;
+
+/**
+ * Check if a pattern contains glob characters.
+ */
+const hasGlobCharacters = (pattern: string): boolean => {
+  return /[*?\[\]]/.test(pattern);
+};
+
+/**
+ * Parse a glob pattern to determine the optimal search strategy.
+ * Returns the initial path to fetch and whether recursive search is needed.
+ */
+const parseGlobPattern = (
+  pattern: string,
+): {
+  initialPath: string;
+  isRecursive: boolean;
+  basePattern: string;
+  hasWildcardInPath: boolean;
+  wildcardPath?: string;
+} => {
+  // Handle recursive patterns like **/*.json
+  if (pattern.startsWith("**/")) {
+    return {
+      initialPath: "",
+      isRecursive: true,
+      basePattern: pattern.slice(3), // Remove **/
+      hasWildcardInPath: true,
+    };
+  }
+
+  // Handle patterns like folder/*.json or *.json
+  const lastSlashIndex = pattern.lastIndexOf("/");
+  if (lastSlashIndex === -1) {
+    // No folder, just a filename pattern in root
+    return {
+      initialPath: "",
+      isRecursive: false,
+      basePattern: pattern,
+      hasWildcardInPath: hasGlobCharacters(pattern),
+    };
+  }
+
+  // Pattern has a folder component
+  const folder = pattern.slice(0, lastSlashIndex);
+  const filePattern = pattern.slice(lastSlashIndex + 1);
+
+  // Check if folder contains wildcards (e.g., bff/*.Common)
+  const folderHasWildcards = hasGlobCharacters(folder);
+
+  // Check if any subfolder pattern exists (e.g., folder/**/*.json)
+  if (folder.includes("**")) {
+    return {
+      initialPath: folder.replace(/\*\*.*$/, ""), // Get the base folder before **
+      isRecursive: true,
+      basePattern: pattern
+        .slice(folder.replace(/\*\*.*$/, "").length + 1)
+        .replace(/^\*\*/, ""),
+      hasWildcardInPath: true,
+    };
+  }
+
+  // If folder has wildcards, we need to handle it specially
+  if (folderHasWildcards) {
+    // Find the first non-wildcard parent path
+    const folderParts = folder.split("/");
+    let basePath = "";
+    let wildcardSuffix = "";
+
+    for (let i = 0; i < folderParts.length; i++) {
+      const part = folderParts[i];
+      if (hasGlobCharacters(part)) {
+        // This part has wildcards, use everything before as base
+        wildcardSuffix = folderParts.slice(i).join("/");
+        break;
+      }
+      basePath = basePath ? `${basePath}/${part}` : part;
+    }
+
+    return {
+      initialPath: basePath,
+      isRecursive: false,
+      basePattern: filePattern,
+      hasWildcardInPath: true,
+      wildcardPath: wildcardSuffix, // Store the wildcard part to match after listing base path
+    };
+  }
+
+  return {
+    initialPath: folder,
+    isRecursive: false,
+    basePattern: filePattern,
+    hasWildcardInPath: false,
+  };
+};
+
+/**
+ * Fetch directory contents from a repository at a specific path.
+ */
+const fetchDirectoryContents = async (
+  organization: string,
+  repository: string,
+  path: string,
+  ref?: string,
+  signal?: AbortSignal,
+): Promise<GithubContentsResponseItem[]> => {
+  const encodedOrg = encodeURIComponent(organization);
+  const encodedRepo = encodeURIComponent(repository);
+  const encodedPath = encodeURIComponent(path);
+
+  const params = new URLSearchParams();
+  if (ref) {
+    params.set("ref", ref);
+  }
+
+  const queryString = params.toString();
+  const pathWithQuery = queryString
+    ? `/repos/${encodedOrg}/${encodedRepo}/contents/${encodedPath}?${queryString}`
+    : `/repos/${encodedOrg}/${encodedRepo}/contents/${encodedPath}`;
+
+  try {
+    const response = await fetchGithubJson<GithubContentsResponseItem[]>({
+      path: pathWithQuery,
+      signal,
+    });
+
+    // Contents API returns an array for directories, object for files
+    if (Array.isArray(response)) {
+      return response;
+    }
+    return [];
+  } catch (error) {
+    if (error instanceof GithubApiError && error.status === 404) {
+      return [];
+    }
+    throw error;
+  }
+};
+
+/**
+ * Recursively search for files matching a glob pattern.
+ * Uses optimized algorithm to minimize API calls.
+ * @param maxApiCalls - Maximum number of API calls to prevent excessive requests (default: 10)
+ */
+export const findMatchingFiles = async (
+  organization: string,
+  repository: string,
+  pattern: string,
+  ref?: string,
+  signal?: AbortSignal,
+  onProgress?: (found: number) => void,
+  maxApiCalls: number = DEFAULT_MAX_API_CALLS,
+): Promise<FileMatchResult[]> => {
+  const results: FileMatchResult[] = [];
+  let apiCallCount = 0;
+
+  // If no glob characters, it's an exact file path - single API call
+  if (!hasGlobCharacters(pattern)) {
+    const fileContent = await fetchFileContents(
+      organization,
+      repository,
+      pattern,
+      ref,
+      signal,
+    );
+
+    if (fileContent) {
+      results.push({
+        path: pattern,
+        sha: fileContent.sha,
+        type: "file",
+      });
+    }
+    return results;
+  }
+
+  // Parse the glob pattern to determine search strategy
+  const {
+    initialPath,
+    isRecursive,
+    basePattern,
+    hasWildcardInPath,
+    wildcardPath,
+  } = parseGlobPattern(pattern);
+
+  // If there's a wildcard in the path (e.g., bff/*.common/*.csproj), we need recursive search
+  const shouldSearchRecursively = isRecursive || hasWildcardInPath;
+
+  // Track visited directories to avoid duplicate API calls
+  const visitedDirs = new Set<string>();
+
+  // Queue of directories to explore
+  const dirsToExplore: string[] = [initialPath];
+
+  // When there's a wildcard in the path, build the full pattern for directory matching
+  // e.g., for "bff/*.common/*.csproj", the wildcardPath is "*.common/" and we want to match directories against "*.common"
+  const directoryMatchPattern =
+    hasWildcardInPath && wildcardPath
+      ? wildcardPath.replace(/\/$/, "") // Remove trailing slash for directory matching
+      : "";
+
+  // minimatch options for case-insensitive matching (useful for patterns like *.Common)
+  const minimatchOptions = { nocase: true };
+
+  while (dirsToExplore.length > 0 && apiCallCount < maxApiCalls) {
+    const currentPath = dirsToExplore.shift()!;
+
+    // Skip if already visited
+    if (visitedDirs.has(currentPath)) {
+      continue;
+    }
+    visitedDirs.add(currentPath);
+    apiCallCount++;
+
+    // Stop if we've reached the API call limit
+    if (apiCallCount >= maxApiCalls) {
+      break;
+    }
+
+    // Fetch directory contents
+    const contents = await fetchDirectoryContents(
+      organization,
+      repository,
+      currentPath,
+      ref,
+      signal,
+    );
+
+    for (const item of contents) {
+      if (item.type === "file") {
+        // Check if filename matches the pattern
+        const relativePath = currentPath
+          ? `${currentPath}/${item.name}`
+          : item.name;
+
+        if (
+          minimatch(relativePath, pattern, minimatchOptions) ||
+          minimatch(item.name, basePattern, minimatchOptions)
+        ) {
+          results.push({
+            path: relativePath,
+            sha: item.sha,
+            type: "file",
+          });
+          onProgress?.(results.length);
+        }
+      } else if (item.type === "dir") {
+        // Determine if we should explore this subdirectory
+        let shouldExplore = shouldSearchRecursively;
+
+        // If there's a wildcard path (e.g., *.common/), check if directory matches
+        if (hasWildcardInPath && directoryMatchPattern) {
+          // Build the relative path from the initial path to check against wildcard
+          const pathFromInitial = currentPath
+            ? `${currentPath}/${item.name}`.replace(
+                new RegExp(`^${initialPath}/?`),
+                "",
+              )
+            : item.name;
+
+          // Check if this directory matches the wildcard pattern
+          // e.g., for pattern "bff/*.common/*.csproj", check if "PRQXDashboard.Common" matches "*.common"
+          // Use case-insensitive matching since filesystem paths may have different case
+          shouldExplore =
+            minimatch(item.name, directoryMatchPattern, minimatchOptions) ||
+            minimatch(pathFromInitial, directoryMatchPattern, minimatchOptions);
+        }
+
+        if (shouldExplore) {
+          // Add subdirectory to explore queue
+          const newPath = currentPath
+            ? `${currentPath}/${item.name}`
+            : item.name;
+          dirsToExplore.push(newPath);
+        }
+      }
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Find files matching a pattern with minimum API calls.
+ * Optimized based on pattern complexity:
+ * - Exact path: 1 call
+ * - folder/filename.json: 1 call to folder
+ * - Recursive patterns: recursive search
+ * @param maxApiCalls - Maximum number of API calls to prevent excessive requests (default: 10)
+ */
+export const findFilesOptimized = async (
+  organization: string,
+  repository: string,
+  pattern: string,
+  ref?: string,
+  signal?: AbortSignal,
+  maxApiCalls: number = DEFAULT_MAX_API_CALLS,
+): Promise<FileMatchResult[]> => {
+  return findMatchingFiles(
+    organization,
+    repository,
+    pattern,
+    ref,
+    signal,
+    undefined,
+    maxApiCalls,
+  );
 };
