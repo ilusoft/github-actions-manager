@@ -193,8 +193,8 @@ export function BulkBranchDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-2xl" scrollable>
-        <DialogHeader>
+      <DialogContent className="flex h-[80vh] max-w-2xl flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Create branch in repositories</DialogTitle>
           <DialogDescription>
             Provide the base branch and the new branch name. The action will run
@@ -202,7 +202,7 @@ export function BulkBranchDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="base-branch">Base branch</Label>
@@ -265,7 +265,7 @@ export function BulkBranchDialog({
           </div>
         </div>
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+        <DialogFooter className="shrink-0 flex flex-col gap-2 sm:flex-row sm:justify-between">
           <Button
             type="button"
             variant="ghost"

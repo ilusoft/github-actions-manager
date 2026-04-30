@@ -217,8 +217,8 @@ export function BulkClosePullRequestDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="flex h-[80vh] max-w-2xl flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Close pull requests</DialogTitle>
           <DialogDescription>
             Close the selected pull requests. This action will run sequentially
@@ -226,7 +226,7 @@ export function BulkClosePullRequestDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-y-auto pr-2">
+        <div className="flex-1 overflow-y-auto pr-2">
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Pull requests to close</h4>
             <ul className="space-y-2">
@@ -262,7 +262,7 @@ export function BulkClosePullRequestDialog({
 
         <Separator />
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+        <DialogFooter className="shrink-0 flex flex-col gap-2 sm:flex-row sm:justify-between">
           <Button
             type="button"
             variant="ghost"

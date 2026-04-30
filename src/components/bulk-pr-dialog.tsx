@@ -203,8 +203,8 @@ export function BulkPrDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-2xl" scrollable>
-        <DialogHeader>
+      <DialogContent className="flex h-[80vh] max-w-2xl flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Create pull requests</DialogTitle>
           <DialogDescription>
             Provide branch information and pull request details. The action will
@@ -212,7 +212,7 @@ export function BulkPrDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="source-branch">Source branch</Label>
@@ -261,7 +261,7 @@ export function BulkPrDialog({
 
           <Separator />
 
-          <div className="space-y-2">
+          <div className="max-h-[40vh] overflow-y-auto pr-2">
             <h4 className="text-sm font-semibold">Progress</h4>
             <ul className="space-y-2">
               {statuses.map((entry) => (
@@ -300,7 +300,7 @@ export function BulkPrDialog({
           </div>
         </div>
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+        <DialogFooter className="shrink-0 flex flex-col gap-2 sm:flex-row sm:justify-between">
           <Button
             type="button"
             variant="ghost"
