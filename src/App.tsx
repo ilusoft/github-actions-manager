@@ -93,7 +93,7 @@ function App() {
       </main>
       <footer className="border-t">
         <div className="container py-4 text-sm text-muted-foreground">
-          Built by ILUSOFT INC. 2026 © All rights reserved.
+          Built by ILUSOFT INC. 2026 © Open sourced under MIT License.
         </div>
       </footer>
     </div>
